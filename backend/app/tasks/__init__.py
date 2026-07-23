@@ -3,16 +3,19 @@ from celery.schedules import crontab
 
 from app.config import settings
 
-# Redis publicado en Windows a veces no acepta RESP3/HELLO; forzar protocol=2
+# Redis publicado en Windows a veces no acepta RESP3/HELLO; forzar protocol=2 (redis>=5)
 try:
+    import redis as _redis_mod
     import redis.connection as _redis_conn
 
-    if not getattr(_redis_conn.Connection, "_a360_proto2", False):
+    _redis_major = int(getattr(_redis_mod, "__version__", "0").split(".")[0] or 0)
+    if _redis_major >= 5 and not getattr(_redis_conn.Connection, "_a360_proto2", False):
         _orig_conn_init = _redis_conn.Connection.__init__
 
         def _conn_init_protocol2(self, *args, **kwargs):
-            kwargs["protocol"] = 2
-            kwargs["maint_notifications_config"] = None
+            kwargs.setdefault("protocol", 2)
+            if "maint_notifications_config" not in kwargs:
+                kwargs["maint_notifications_config"] = None
             return _orig_conn_init(self, *args, **kwargs)
 
         _redis_conn.Connection.__init__ = _conn_init_protocol2  # type: ignore[method-assign]
@@ -46,8 +49,9 @@ celery_app.conf.update(
         "app.tasks.classify_and_verify": {"queue": "llm"},
         "app.tasks.analyze_article": {"queue": "llm"},
         "app.tasks.generate_weekly_report": {"queue": "llm"},
-        "app.tasks.generate_content_package_task": {"queue": "generate"},
-        "app.tasks.generate_blog_draft_task": {"queue": "generate"},
+        # Misma cola llm que el worker editorial (-Q editorial,llm)
+        "app.tasks.generate_content_package_task": {"queue": "llm"},
+        "app.tasks.generate_blog_draft_task": {"queue": "llm"},
     },
     beat_schedule={
         "collect-rss-every-6-hours": {
@@ -192,6 +196,10 @@ def generate_content_package_task(
     languages: list[str] | None = None,
     prefer_llm: bool = True,
     organization_id: int | None = None,
+    formats: list[str] | None = None,
+    package_id: int | None = None,
+    regenerate: bool = False,
+    provider_mode: str = "local",
     job_id: int | None = None,
 ):
     def work():
@@ -211,19 +219,23 @@ def generate_content_package_task(
             article = article_query.first()
             if not article:
                 return {"error": "Article not found"}
-            
-            # Usar la nueva arquitectura de Fase 3
+
             package = create_content_package(
                 db,
                 article,
                 languages=languages or ["es"],
                 prefer_llm=prefer_llm,
                 organization_id=organization_id,
+                formats=formats,
+                package_id=package_id,
+                regenerate=regenerate,
+                provider_mode=provider_mode or "local",
             )
             return {
                 "package_id": package.id,
                 "article_id": article_id,
                 "languages": languages or ["es"],
+                "formats": formats,
                 "status": "completed",
             }
         finally:

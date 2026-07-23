@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.ai_providers import AIProvider, AIUsageLog
 from app.services.crypto_keys import decrypt_secret, encrypt_secret, key_hint
-from app.services.model_router import estimate_cost, routing_mode
+from app.services.model_router import estimate_cost, resolve_routing_mode, routing_mode
 from app.services.url_safety import validate_provider_base_url
 
 SUPPORTED_TYPES = {"ollama", "openai", "anthropic", "gemini"}
@@ -181,17 +181,32 @@ def _log_usage(
 def _call_ollama(provider: AIProvider, prompt: str) -> str:
     base = (provider.base_url or settings.ollama_base_url).rstrip("/")
     url = f"{base}/api/chat"
+    # gemma4:e2b tiene "thinking": sin think=false gasta tokens en razonar
+    # y a menudo deja message.content vacío → fallos/timeouts.
     payload = {
         "model": provider.model_name or settings.ollama_model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
-        "options": {"temperature": 0.1},
+        "think": False,
+        "options": {
+            "temperature": 0.1,
+            "num_predict": 1200,
+        },
     }
     with httpx.Client(timeout=settings.llm_request_timeout_seconds) as client:
         response = client.post(url, json=payload)
         response.raise_for_status()
         data = response.json()
-    return data["message"]["content"]
+    message = data.get("message") or {}
+    content = (message.get("content") or "").strip()
+    if not content:
+        # Fallback por si el runtime ignora think=false
+        thinking = (message.get("thinking") or "").strip()
+        if thinking:
+            content = thinking
+    if not content:
+        raise ValueError("Ollama returned empty content")
+    return content
 
 
 def _call_openai_compatible(provider: AIProvider, prompt: str, api_key: str) -> str:
@@ -266,11 +281,15 @@ def _invoke(provider: AIProvider, prompt: str) -> str:
     raise ValueError(f"Unsupported provider_type: {provider.provider_type}")
 
 
-def _providers_for_task(db: Session, task_type: str) -> list[AIProvider]:
+def _providers_for_task(
+    db: Session,
+    task_type: str,
+    provider_mode: str | None = None,
+) -> list[AIProvider]:
     if not db.info.get("a360_ai_catalog_ready"):
         seed_default_ollama(db)
         db.info["a360_ai_catalog_ready"] = True
-    mode = routing_mode(task_type)
+    mode = resolve_routing_mode(task_type, provider_mode)
     query = db.query(AIProvider).filter(AIProvider.is_active.is_(True))
     organization_id = db.info.get("organization_id")
     if organization_id is not None:
@@ -337,9 +356,21 @@ def complete(
     *,
     task_type: str,
     prompt: str,
+    provider_mode: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    providers = _providers_for_task(db, task_type)
+    providers = _providers_for_task(db, task_type, provider_mode=provider_mode)
     if not providers:
+        mode = (provider_mode or "auto").lower()
+        if mode in {"cloud", "api", "paid", "paid_only", "web"}:
+            raise RuntimeError(
+                "No hay proveedor cloud activo con API key. "
+                "Configúralo en Modelos de IA (OpenAI, Anthropic o Gemini)."
+            )
+        if mode in {"local", "local_only", "ollama"}:
+            raise RuntimeError(
+                "No hay proveedor local (Ollama) activo. "
+                "Inicia Ollama o elige generación por API."
+            )
         raise RuntimeError("No active AI providers configured")
 
     errors: list[str] = []

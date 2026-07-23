@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "gemma4:e2b"
     vector_embedding_model: str = "ollama/nomic-embed-text"
+    chroma_persist_dir: str | None = None
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: str = "redis://localhost:6379/1"
     rss_extract_concurrency: int = 6

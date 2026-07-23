@@ -12,6 +12,16 @@ from app.models.background_jobs import BackgroundJob
 ACTIVE = {"queued", "running", "retrying"}
 IDEMPOTENT_OK = ACTIVE | {"completed"}
 
+# Cola explícita por job (evita quedar en colas huérfanas como "generate")
+_JOB_QUEUES: dict[str, str] = {
+    "collect": "ingest",
+    "classify": "llm",
+    "report": "llm",
+    "analyze_article": "llm",
+    "content_package": "llm",
+    "blog_draft": "llm",
+}
+
 
 def job_to_dict(job: BackgroundJob) -> dict[str, Any]:
     return {
@@ -83,10 +93,14 @@ def enqueue_job(
 
     try:
         # ignore_result: estado canónico en background_jobs
-        async_result = celery_task.apply_async(
-            kwargs=celery_kwargs,
-            ignore_result=True,
-        )
+        apply_kwargs: dict[str, Any] = {
+            "kwargs": celery_kwargs,
+            "ignore_result": True,
+        }
+        queue = _JOB_QUEUES.get(job_name)
+        if queue:
+            apply_kwargs["queue"] = queue
+        async_result = celery_task.apply_async(**apply_kwargs)
         job.celery_task_id = async_result.id
         job.updated_at = datetime.utcnow()
         db.commit()

@@ -16,16 +16,20 @@ export default function AgentsTab({
   onRefresh,
   onRunPipeline,
   onRunNamed,
+  embedded = false,
 }) {
-  return (
-    <section className="glass-panel" style={{ padding: '24px' }}>
+  const body = (
+    <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', gap: '12px', flexWrap: 'wrap' }}>
         <div>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Bot size={24} style={{ color: '#06B6D4' }} /> Agentes editoriales
-          </h2>
+          {!embedded && (
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Bot size={24} style={{ color: '#06B6D4' }} /> Agentes editoriales
+            </h2>
+          )}
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            Los agentes sí están activos (API OK). Si “no responden”, suele ser Gemma tardando 30–90s por artículo, o falta de <code>article_id</code> en writer/verifier.
+            Pipelines editoriales (clasificar, descubrir, escribir). Usan los modelos configurados arriba.
+            {agentsCatalog?.pipelines?.engine ? ` Motor: ${agentsCatalog.pipelines.engine}.` : ''}
           </p>
         </div>
         <button className="btn btn-secondary" onClick={onRefresh} disabled={isBusy('agents-run') || isBusy('agents-pipeline')}>
@@ -123,6 +127,13 @@ export default function AgentsTab({
           </pre>
         </div>
       )}
+    </>
+  );
+
+  if (embedded) return body;
+  return (
+    <section className="glass-panel" style={{ padding: '24px' }}>
+      {body}
     </section>
   );
 }

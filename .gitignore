@@ -32,3 +32,5 @@ backups/
 *.dump
 .DS_Store
 Thumbs.db
+backend/chroma_data/
+chroma_data/

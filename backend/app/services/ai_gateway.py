@@ -159,7 +159,8 @@ class AIGatewayService:
             "prompt": prompt,
             "system": system_prompt,
             "stream": False,
-            "options": {"temperature": 0.2}
+            "think": False,
+            "options": {"temperature": 0.2, "num_predict": 1200},
         }
 
         req = urllib.request.Request(

@@ -161,7 +161,7 @@ export default function MarketingTab({ notify }) {
         <Megaphone size={24} style={{ color: '#F59E0B' }} /> Marketing & Atribución
       </h2>
       <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>
-        Ofertas, enlaces UTM y lista newsletter. Los leads siguen en Resultados; aquí se arma la atribución.
+        Ofertas, enlaces UTM y lista newsletter. Aquí se arma la atribución.
       </p>
 
       <div style={{ marginBottom: '28px' }}>

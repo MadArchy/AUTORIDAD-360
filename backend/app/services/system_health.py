@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import httpx
-import redis
 from sqlalchemy import text
 
 from app.config import settings
@@ -25,12 +24,16 @@ def get_system_health() -> dict:
         dependencies["database"]["error"] = str(exc)[:160]
 
     try:
-        client = redis.from_url(
-            settings.redis_url,
-            socket_connect_timeout=1,
-            socket_timeout=1,
-            protocol=2,
-        )
+        import redis as redis_mod
+
+        redis_kwargs = {
+            "socket_connect_timeout": 1,
+            "socket_timeout": 1,
+        }
+        # protocol=2 solo en redis-py >= 5
+        if int(getattr(redis_mod, "__version__", "0").split(".")[0] or 0) >= 5:
+            redis_kwargs["protocol"] = 2
+        client = redis_mod.from_url(settings.redis_url, **redis_kwargs)
         dependencies["redis"] = {"ok": bool(client.ping())}
     except Exception as exc:  # noqa: BLE001
         dependencies["redis"]["error"] = str(exc)[:160]
@@ -54,6 +57,19 @@ def get_system_health() -> dict:
         dependencies["ollama"] = {"ok": response.is_success}
     except Exception as exc:  # noqa: BLE001
         dependencies["ollama"]["error"] = str(exc)[:160]
+
+    try:
+        from app.services.vector_engine import HAS_CHROMADB, get_vector_engine
+
+        ve = get_vector_engine()
+        dependencies["chroma"] = {
+            "ok": bool(HAS_CHROMADB and ve.is_active),
+            "installed": bool(HAS_CHROMADB),
+            "active": bool(ve.is_active),
+            "persist_dir": getattr(ve, "persist_directory", None),
+        }
+    except Exception as exc:  # noqa: BLE001
+        dependencies["chroma"] = {"ok": False, "error": str(exc)[:160]}
 
     critical_ok = dependencies["database"]["ok"] and dependencies["redis"]["ok"]
     return {

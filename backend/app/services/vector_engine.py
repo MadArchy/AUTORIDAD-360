@@ -1,5 +1,6 @@
 import os
 import logging
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 from app.config import settings
 
@@ -23,7 +24,10 @@ if HAS_CHROMADB:
         def __init__(self, model_name: str | None = None, api_base: str | None = None):
             self.model_name = model_name or settings.vector_embedding_model
             self.api_base = api_base or settings.ollama_base_url
-            
+
+        def name(self) -> str:
+            return f"litellm:{self.model_name}"
+
         def __call__(self, input: Documents) -> Embeddings:
             if not input:
                 return []
@@ -40,16 +44,28 @@ if HAS_CHROMADB:
                 raise RuntimeError(f"embedding_failed: {e}") from e
 
 
+def _default_persist_dir() -> str:
+    configured = getattr(settings, "chroma_persist_dir", None)
+    if configured:
+        return str(configured)
+    # backend/chroma_data (estable, no depende del cwd del proceso)
+    return str(Path(__file__).resolve().parents[2] / "chroma_data")
+
+
 class VectorEngineService:
     def __init__(self):
-        self.is_active = HAS_CHROMADB
-        if not self.is_active:
+        self.is_active = False
+        self.client = None
+        self.collection = None
+        self.embedding_fn = None
+        self.persist_directory = _default_persist_dir()
+        if not HAS_CHROMADB:
             return
-            
-        self.persist_directory = os.path.join(os.getcwd(), "chroma_data")
-        os.makedirs(self.persist_directory, exist_ok=True)
-        
+        self._init_client()
+
+    def _init_client(self) -> None:
         try:
+            os.makedirs(self.persist_directory, exist_ok=True)
             self.client = chromadb.PersistentClient(path=self.persist_directory)
             self.embedding_fn = LiteLLMEmbeddingFunction(
                 model_name=getattr(settings, "vector_embedding_model", "ollama/nomic-embed-text"),
@@ -59,7 +75,8 @@ class VectorEngineService:
                 name="articles_collection",
                 embedding_function=self.embedding_fn
             )
-            logger.info(f"VectorEngine inicializado en {self.persist_directory}")
+            self.is_active = True
+            logger.info("VectorEngine activo (Chroma) en %s", self.persist_directory)
         except Exception as e:
             logger.error(f"Fallo al inicializar ChromaDB: {e}")
             self.is_active = False
@@ -81,11 +98,14 @@ class VectorEngineService:
             return False
 
     def search_similar(self, query: str, n_results: int = 5, category: Optional[str] = None) -> List[Dict[str, Any]]:
-        if not self.is_active: return []
+        if not self.is_active:
+            return []
         try:
             where_clause = {"category": category} if category else None
-            results = self.collection.query(query_texts=[query], n_results=n_results, where=where_clause)
-            
+            results = self.collection.query(
+                query_texts=[query], n_results=n_results, where=where_clause
+            )
+
             formatted_results = []
             if results and results.get("ids") and len(results["ids"]) > 0:
                 for idx, doc_id in enumerate(results["ids"][0]):
@@ -101,7 +121,8 @@ class VectorEngineService:
             return []
 
     def check_is_duplicate(self, content: str, threshold: float = 0.2) -> bool:
-        if not self.is_active: return False
+        if not self.is_active:
+            return False
         try:
             results = self.collection.query(query_texts=[content], n_results=1)
             if results and results.get("distances") and len(results["distances"][0]) > 0:
@@ -110,4 +131,10 @@ class VectorEngineService:
         except Exception:
             return False
 
+
 vector_engine = VectorEngineService()
+
+
+def get_vector_engine() -> VectorEngineService:
+    """Acceso al singleton; útil para tests y health."""
+    return vector_engine

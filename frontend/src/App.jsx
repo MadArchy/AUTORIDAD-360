@@ -60,23 +60,19 @@ import AppShell from './components/AppShell';
 import ActivityCenter from './components/ActivityCenter';
 import LoginScreen from './LoginScreen';
 import Top10Tab from './tabs/Top10Tab';
-import AIGatewayTab from './tabs/AIGatewayTab';
-import AgentsTab from './tabs/AgentsTab';
-import OpsCalendarTab from './tabs/OpsCalendarTab';
+import AIHubTab from './tabs/AIHubTab';
 import LiveNewsTab from './tabs/LiveNewsTab';
 import MultiFormatTab from './tabs/MultiFormatTab';
 import ProfileTab from './tabs/ProfileTab';
-import ApprovalTab from './tabs/ApprovalTab';
 import BlogTab from './tabs/BlogTab';
 import PublishTab from './tabs/PublishTab';
-import LegalSeoTab from './tabs/LegalSeoTab';
 import MarketingTab from './tabs/MarketingTab';
 import RefreshTab from './tabs/RefreshTab';
 import ReportTab from './tabs/ReportTab';
 import MultiEmpresaTab from './tabs/MultiEmpresaTab';
 import MetricsTab from './tabs/MetricsTab';
 import HoyTab from './tabs/HoyTab';
-import { normalizeTop10, normalizeArticle, normalizeOpsSlot } from './utils/normalizers';
+import { normalizeTop10, normalizeArticle } from './utils/normalizers';
 import { enqueueJob, getRememberedJobs, waitForJob } from './jobs';
 
 export default function App() {
@@ -89,14 +85,13 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [report, setReport] = useState(null);
   const [multiFormatContent, setMultiFormatContent] = useState(null);
-  const [calendarSlots, setCalendarSlots] = useState([]);
-  const [decisionLogs, setDecisionLogs] = useState([]);
   const [aiProviders, setAiProviders] = useState([]);
   const [aiUsageStats, setAiUsageStats] = useState(null);
   const [testPrompt, setTestPrompt] = useState('Analiza las implicaciones legales y de gobernanza de la IA generativa.');
   const [testResult, setTestResult] = useState(null);
   const [selectedFormatSubTab, setSelectedFormatSubTab] = useState('linkedin');
   const [selectedLanguage, setSelectedLanguage] = useState('es');
+  const [providerMode, setProviderMode] = useState('local'); // local | cloud | auto
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState({});
   const [toasts, setToasts] = useState([]);
@@ -307,16 +302,12 @@ export default function App() {
 
   const refreshPilotSources = async () => {
     try {
-      const [slotsData, logsData, blogs, pending, leadsData, packages] = await Promise.all([
-        api('/ops/calendar').catch(() => []),
-        api('/ops/decisions').catch(() => []),
+      const [blogs, pending, leadsData, packages] = await Promise.all([
         api('/blog/published').catch(() => []),
         api('/blog/pending').catch(() => []),
         api('/leads?limit=50').catch(() => []),
         api('/content/packages?limit=20').catch(() => []),
       ]);
-      setCalendarSlots((slotsData || []).map(normalizeOpsSlot));
-      setDecisionLogs(logsData || []);
       setPublishedBlogPosts(blogs || []);
       setPendingBlogPosts(pending || []);
       setLeads(leadsData || []);
@@ -328,10 +319,14 @@ export default function App() {
   };
 
   const goToTab = (tab) => {
+    if (tab === 'approval') tab = 'multiformat';
+    if (tab === 'legalseo') tab = 'hoy';
+    if (tab === 'agents') tab = 'aigateway';
     setActiveTab(tab);
-    if (tab === 'ops') fetchOpsData();
-    if (tab === 'aigateway') fetchAiStats();
-    if (tab === 'agents') fetchAgentsCatalog();
+    if (tab === 'aigateway') {
+      fetchAiStats();
+      fetchAgentsCatalog();
+    }
     if (tab === 'profile') fetchProfile();
     if (tab === 'report') fetchReport();
     if (tab === 'multiempresa') fetchOrgData();
@@ -341,9 +336,8 @@ export default function App() {
       fetchPublishedBlogs();
     }
     if (tab === 'live') fetchArticles();
-    if (['ops', 'blog', 'metrics', 'multiformat', 'approval', 'top10'].includes(tab)) {
-      // progreso se recalcula con el estado; refrescar fuentes en pasos clave
-      if (tab === 'ops' || tab === 'blog' || tab === 'metrics') refreshPilotSources();
+    if (['blog', 'metrics', 'multiformat', 'approval', 'top10'].includes(tab)) {
+      if (tab === 'blog' || tab === 'metrics') refreshPilotSources();
     }
   };
 
@@ -362,6 +356,7 @@ export default function App() {
       );
     }
     setMultiFormatContent(null);
+    setMultiFormatError('');
     setSelectedArticleForApproval({
       ...normalized,
       id: art.id,
@@ -370,7 +365,7 @@ export default function App() {
       url: art.source_url || art.url,
     });
     setActiveTab('multiformat');
-    fetchMultiFormat(art.id, selectedLanguage, { showBanner: true, clearContent: true });
+    // La generación solo arranca cuando el usuario autoriza en Generar formatos
   };
 
   const packagePieces = useMemo(
@@ -387,53 +382,36 @@ export default function App() {
   );
 
   const pilotProgress = useMemo(() => {
-    const hasNews = (top10 || []).length > 0;
     const hasFormats = allPieces.length > 0 || (contentPackages || []).length > 0;
+    const hasChosen =
+      Boolean(selectedArticleForApproval) || hasFormats;
     const hasApprovedPiece =
       allPieces.some((p) => p.status === 'approved') ||
       approvedArticleIds.size > 0 ||
       (pendingBlogPosts || []).some((p) => p.status === 'approved');
-    const hasPublished =
-      (publishedBlogPosts || []).length > 0 ||
-      (calendarSlots || []).some((s) => s.status === 'published');
+    const hasPublished = (publishedBlogPosts || []).length > 0;
     return {
-      top10: hasNews,
-      multiformat: hasFormats,
+      elegir: hasChosen,
       approval: hasApprovedPiece,
       publish: hasPublished,
     };
   }, [
-    top10,
+    selectedArticleForApproval,
     allPieces,
     contentPackages,
     approvedArticleIds,
     pendingBlogPosts,
-    calendarSlots,
     publishedBlogPosts,
     pilotTick,
   ]);
 
   const PILOT_STEPS = [
     {
-      id: 'top10',
-      label: 'Elegir',
+      id: 'elegir',
+      label: 'Elegir y generar',
       tab: 'top10',
-      hint: 'Elige una noticia del Top 10',
+      hint: 'Elige una noticia y genera el formato que necesites',
       cta: 'Abrir Top 10',
-    },
-    {
-      id: 'multiformat',
-      label: 'Generar',
-      tab: 'top10',
-      hint: 'Al usar una noticia del Top 10 se generan los formatos',
-      cta: 'Ir a Elegir',
-    },
-    {
-      id: 'approval',
-      label: 'Aprobar',
-      tab: 'approval',
-      hint: 'Revisa y aprueba la pieza o el blog',
-      cta: 'Ir a aprobar',
     },
     {
       id: 'publish',
@@ -504,24 +482,6 @@ export default function App() {
       notify('Porcentajes editoriales guardados.');
     } catch (e) {
       notify(e.message || 'Error al guardar porcentajes');
-    }
-  };
-
-  const fetchOpsData = async () => {
-    setLoading(true);
-    try {
-      const [slotsData, logsData] = await Promise.all([
-        api('/ops/calendar'),
-        api('/ops/decisions'),
-      ]);
-      setCalendarSlots((slotsData || []).map(normalizeOpsSlot));
-      setDecisionLogs(logsData || []);
-    } catch (e) {
-      console.error("Error fetching ops data", e);
-      setCalendarSlots([]);
-      setDecisionLogs([]);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -777,8 +737,45 @@ export default function App() {
   };
 
   const fetchMultiFormat = async (articleId, lang = selectedLanguage, options = {}) => {
-    const { clearContent = true, showBanner = false } = options;
+    const {
+      clearContent = false,
+      showBanner = false,
+      formats = null,
+      regenerate = false,
+      packageId: packageIdOpt = null,
+      providerMode: providerModeOpt = null,
+    } = options;
+    const mode = providerModeOpt || providerMode || 'local';
+    const fmtList = Array.isArray(formats) && formats.length
+      ? formats
+      : [
+          {
+            linkedin: 'linkedin',
+            video: 'video_script',
+            carousel: 'carousel',
+            newsletter: 'newsletter',
+          }[selectedFormatSubTab] || 'linkedin',
+        ];
+    const fmtLabel = fmtList
+      ? fmtList.map((f) => ({
+          linkedin: 'LinkedIn',
+          video_script: 'video',
+          carousel: 'carrusel',
+          newsletter: 'newsletter',
+        }[f] || f)).join(', ')
+      : 'formatos';
     const langLabel = lang === 'en' ? 'inglés' : 'español';
+    const modeLabel = mode === 'cloud' ? 'API' : mode === 'auto' ? 'auto' : 'local';
+    if (mode === 'cloud') {
+      const hasCloud = (aiProviders || []).some((p) => p.is_active && !p.is_local);
+      if (!hasCloud) {
+        notify(
+          'No hay API cloud configurada. Ve a Inteligencia Artificial y agrega tu API key (OpenAI, Anthropic o Gemini).',
+          'warn'
+        );
+        return;
+      }
+    }
     if (showBanner) setFormatGenBanner(true);
     try {
       await withBusy(
@@ -789,9 +786,16 @@ export default function App() {
           try {
             const job = await runBackgroundJob(`/content/from-article/${articleId}`, {
               key: 'multiformat',
-              label: `Generando formatos en ${langLabel}`,
-              body: { languages: [lang], prefer_llm: true },
-              timeoutMs: 30 * 60 * 1000,
+              label: `Generando ${fmtLabel} (${langLabel}, ${modeLabel})`,
+              body: {
+                languages: [lang],
+                prefer_llm: true,
+                formats: fmtList,
+                package_id: packageIdOpt || multiFormatContent?.id || null,
+                regenerate: Boolean(regenerate),
+                provider_mode: mode,
+              },
+              timeoutMs: 12 * 60 * 1000,
             });
             const packageId = job.result_json?.package_id;
             if (!packageId) throw new Error('El job terminó sin identificar el paquete');
@@ -801,27 +805,32 @@ export default function App() {
             );
             setMultiFormatContent(data);
             setSelectedLanguage(lang);
-            const modes = (data.pieces || []).map((p) => p.generation_mode).filter(Boolean);
+            const modes = (data.pieces || [])
+              .filter((p) => !fmtList || fmtList.includes(p.format_type))
+              .map((p) => p.generation_mode)
+              .filter(Boolean);
             const det = modes.filter((m) => m === 'deterministic').length;
             if (det > 0) {
               notify(
-                `Paquete en ${langLabel} listo, pero ${det} pieza(s) usaron plantilla. Reintenta si el idioma no cuadra.`,
+                `${fmtLabel} listo en ${langLabel}, pero usó plantilla. Reintenta si el idioma no cuadra.`,
                 'warn'
               );
             } else {
-              notify(`Paquete multi-formato listo en ${langLabel}`, 'success');
+              notify(`${fmtLabel} listo en ${langLabel} (${modeLabel})`, 'success');
             }
             refreshPilotSources();
           } catch (e) {
             console.error('Error fetching multi-format content', e);
-            setMultiFormatError(e.message || 'Error al generar multi-formato');
-            notify(e.message || 'Error al generar multi-formato', 'error');
+            setMultiFormatError(e.message || 'Error al generar formato');
+            notify(e.message || 'Error al generar formato', 'error');
           }
         },
         {
           ...JOB_META.multiformat,
           background: true,
-          label: `Generando formatos en ${langLabel}`,
+          label: `Generando ${fmtLabel} (${langLabel}, ${modeLabel})`,
+          etaSec: mode === 'cloud' ? 45 : (fmtList?.length === 1 ? 90 : JOB_META.multiformat.etaSec),
+          needsOllama: mode !== 'cloud',
         }
       );
     } finally {
@@ -836,29 +845,94 @@ export default function App() {
     }
     if (lang === selectedLanguage && multiFormatContent) return;
     setSelectedLanguage(lang);
+    // Solo regenera el formato de la pestaña activa
+    const subToFmt = {
+      linkedin: 'linkedin',
+      video: 'video_script',
+      carousel: 'carousel',
+      newsletter: 'newsletter',
+    };
+    const fmt = subToFmt[selectedFormatSubTab] || 'linkedin';
     fetchMultiFormat(selectedArticleForApproval.id, lang, {
       clearContent: false,
       showBanner: true,
+      formats: [fmt],
+      regenerate: true,
+      packageId: multiFormatContent?.id || null,
     });
   };
 
+  const collectJobRef = useRef(null);
+
   const triggerIngest = async () => {
-    await withBusy('collect', async () => {
-      try {
-        await runBackgroundJob('/jobs/collect', {
+    if (collectJobRef.current || isBusy('collect')) {
+      notify('Ya hay una recolección en curso. Espera a que termine.', 'info');
+      return;
+    }
+
+    setBusy((b) => ({ ...b, collect: true }));
+    let jobId = null;
+    try {
+      const job = await enqueueJob('/jobs/collect', {
+        label: 'Actualizando fuentes de noticias',
+      });
+      jobId = job.id;
+      collectJobRef.current = job.id;
+      setRobotJob({
+        key: 'collect',
+        label: 'Actualizando fuentes de noticias',
+        jobId: job.id,
+        status: job.status,
+        startedAt: Date.now(),
+        etaSec: JOB_META.collect?.etaSec || 600,
+        needsOllama: false,
+      });
+      notify(
+        'Recolección iniciada. Puede tardar varios minutos; puedes seguir usando la app.',
+        'success'
+      );
+    } catch (e) {
+      notify(e.message || 'No se pudo iniciar la recolección RSS', 'error');
+      return;
+    } finally {
+      setBusy((b) => {
+        const next = { ...b };
+        delete next.collect;
+        return next;
+      });
+    }
+
+    waitForJob(jobId, {
+      timeoutMs: 20 * 60 * 1000,
+      onUpdate: (update) => {
+        setRobotJob((current) => ({
+          ...(current || {}),
           key: 'collect',
           label: 'Actualizando fuentes de noticias',
-          timeoutMs: 15 * 60 * 1000,
-        });
+          jobId: update.id,
+          status: update.status,
+          startedAt: current?.startedAt || Date.now(),
+          etaSec: JOB_META.collect?.etaSec || 600,
+          needsOllama: false,
+        }));
+      },
+    })
+      .then(() => {
         notify('Fuentes actualizadas correctamente.', 'success');
         fetchCategories();
         fetchTop10();
         fetchArticles();
         fetchProfile();
-      } catch (e) {
-        notify(e.message || 'Error al ejecutar recolección RSS', 'error');
-      }
-    }, { ...JOB_META.collect, background: true });
+      })
+      .catch((e) => {
+        if (e.name !== 'AbortError') {
+          notify(e.message || 'Error al ejecutar recolección RSS', 'error');
+        }
+      })
+      .finally(() => {
+        collectJobRef.current = null;
+        setRobotJob((current) => (current?.key === 'collect' ? null : current));
+      });
   };
 
   const triggerAnalyzeArticle = async (articleId) => {
@@ -878,109 +952,6 @@ export default function App() {
         notify(e.message || 'Error al analizar artículo', 'error');
       }
     }, { ...JOB_META.analyze, background: true });
-  };
-
-  const approveSlot = async (slotId, riskOverride = false) => {
-    try {
-      await api(`/ops/calendar/${slotId}/advance`, {
-        method: 'POST',
-        body: JSON.stringify({
-          actor: 'Juan Vásquez',
-          target_status: 'approved',
-          reason: riskOverride
-            ? 'Aprobación con override de riesgo explícito desde panel operativo.'
-            : 'Aprobación efectuada desde el panel operativo tras validar semáforo de riesgo.',
-          risk_override: riskOverride,
-        }),
-      });
-      let packageNote = '';
-      try {
-        const pkg = await api(`/publish/from-slot/${slotId}`, {
-          method: 'POST',
-          body: JSON.stringify({}),
-        });
-        await api(`/ops/calendar/${slotId}/advance`, {
-          method: 'POST',
-          body: JSON.stringify({
-            actor: 'Juan Vásquez',
-            target_status: 'scheduled',
-            reason: 'Paquete multi-canal creado; jobs programados con fecha del slot.',
-            risk_override: riskOverride,
-          }),
-        });
-        packageNote = ` Paquete #${pkg.id} listo en Canales.`;
-      } catch (pubErr) {
-        packageNote = ` (Aprobado; publicar desde Canales: ${pubErr.message || 'sin pieza'})`;
-      }
-      notify(`Slot #${slotId} aprobado.${packageNote}`, 'success');
-      fetchOpsData();
-    } catch (e) {
-      notify(
-        e.message ||
-          'Error al aprobar slot (debe estar en pending_approval con pieza adjunta).',
-        'error'
-      );
-    }
-  };
-
-  const publishFromSlot = async (slotId) => {
-    try {
-      const pkg = await api(`/publish/from-slot/${slotId}`, {
-        method: 'POST',
-        body: JSON.stringify({}),
-      });
-      try {
-        await api(`/ops/calendar/${slotId}/advance`, {
-          method: 'POST',
-          body: JSON.stringify({
-            actor: 'Juan Vásquez',
-            target_status: 'scheduled',
-            reason: 'Paquete multi-canal desde calendario.',
-          }),
-        });
-      } catch {
-        /* slot may already be scheduled */
-      }
-      notify(`Paquete #${pkg.id} creado desde slot #${slotId}`, 'success');
-      await fetchOpsData();
-      goToTab('publish');
-    } catch (e) {
-      notify(e.message || 'No se pudo crear paquete desde el slot', 'error');
-    }
-  };
-
-  const prepareSlotApproval = async (slotId) => {
-    try {
-      await api(`/ops/calendar/${slotId}/prepare-approval`, {
-        method: 'POST',
-        body: JSON.stringify({ actor: 'Juan Vásquez' }),
-      });
-      await fetchOpsData();
-      notify(`Slot #${slotId} listo para aprobación humana.`, 'success');
-    } catch (e) {
-      notify(e.message || 'Error al preparar aprobación', 'error');
-    }
-  };
-
-  const completeOpsTask = async (taskId) => {
-    try {
-      await api(`/ops/tasks/${taskId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ actor: 'Juan Vásquez', status: 'in_progress' }),
-      });
-      await api(`/ops/tasks/${taskId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          actor: 'Juan Vásquez',
-          status: 'done',
-          attachment_notes: 'Completada desde panel operativo',
-        }),
-      });
-      await fetchOpsData();
-      notify('Tarea completada', 'success');
-    } catch (e) {
-      notify(e.message || 'Error al completar tarea', 'error');
-    }
   };
 
   const fetchReport = async () => {
@@ -1070,8 +1041,12 @@ export default function App() {
         copy.delete(articleId);
         return copy;
       });
+      setSelectedArticleForApproval(null);
+      setMultiFormatContent(null);
+      setMultiFormatError('');
       await fetchArticles();
-      notify(`Artículo ${articleId} rechazado y guardado.`, 'success');
+      notify(`Artículo ${articleId} rechazado.`, 'success');
+      setActiveTab('top10');
     } catch (error) {
       notify(error.message || 'No se pudo rechazar el artículo', 'error');
     }
@@ -1106,11 +1081,19 @@ export default function App() {
   };
 
   const approveContentPiece = async (pieceId) => {
-    if (!pieceId) return;
+    if (!pieceId) {
+      notify('No hay pieza para aprobar. Genera los formatos primero.', 'warn');
+      return;
+    }
+    const existing = (multiFormatContent?.pieces || []).find((p) => p.id === pieceId);
+    if (existing?.status === 'approved') {
+      notify('Esa pieza ya está aprobada', 'success');
+      return;
+    }
     try {
       await api(`/content/pieces/${pieceId}/approve`, {
         method: 'POST',
-        body: JSON.stringify({ approved_by: 'Juan Vasquez' }),
+        body: JSON.stringify({ approved_by: authUser?.email || 'Juan Vasquez' }),
       });
       notify(`Pieza ${pieceId} aprobada`, 'success');
       if (multiFormatContent?.pieces) {
@@ -1121,9 +1104,150 @@ export default function App() {
           ),
         });
       }
+      if (selectedArticleForApproval?.id) {
+        setApprovedArticleIds((prev) => new Set(prev).add(selectedArticleForApproval.id));
+      }
       await refreshPilotSources();
     } catch (e) {
       notify(e.message || 'Error al aprobar pieza', 'error');
+    }
+  };
+
+  /** Aprueba los formatos generados de la noticia en curso (no lanza blog en silencio). */
+  const approveGeneratedPackage = async (draftOverrides = null) => {
+    // Puede recibir drafts editados; si llega un id numérico (legacy), se ignora
+    if (draftOverrides != null && (typeof draftOverrides !== 'object' || Array.isArray(draftOverrides))) {
+      draftOverrides = null;
+    }
+    const ids = [
+      multiFormatContent?.linkedin_piece_id,
+      multiFormatContent?.video_piece_id,
+      multiFormatContent?.carousel_piece_id,
+      multiFormatContent?.newsletter_piece_id,
+    ].filter(Boolean);
+
+    if (!ids.length) {
+      notify('Genera los formatos antes de aprobar la noticia.', 'warn');
+      return;
+    }
+
+    // Persistir ediciones locales pendientes antes de aprobar
+    if (draftOverrides && typeof draftOverrides === 'object') {
+      const saves = [
+        ['linkedin_post', multiFormatContent.linkedin_piece_id],
+        ['video_script', multiFormatContent.video_piece_id],
+        ['carousel_slides', multiFormatContent.carousel_piece_id],
+        ['newsletter_edition', multiFormatContent.newsletter_piece_id],
+      ];
+      for (const [field, pieceId] of saves) {
+        if (!pieceId || draftOverrides[field] == null) continue;
+        const current =
+          field === 'carousel_slides'
+            ? (typeof multiFormatContent.carousel_slides === 'string'
+                ? multiFormatContent.carousel_slides
+                : JSON.stringify(multiFormatContent.carousel_slides || [], null, 2))
+            : multiFormatContent[field] || '';
+        if (String(draftOverrides[field]) !== String(current)) {
+          try {
+            await api(`/content/pieces/${pieceId}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ body_text: draftOverrides[field] }),
+            });
+          } catch (e) {
+            notify(`No se pudo guardar ${field} antes de aprobar: ${e.message || 'error'}`, 'error');
+            return;
+          }
+        }
+      }
+    }
+
+    const actor = authUser?.email || 'Juan Vasquez';
+    let ok = 0;
+    let skipped = 0;
+    const errors = [];
+    const piecesById = Object.fromEntries((multiFormatContent?.pieces || []).map((p) => [p.id, p]));
+
+    for (const id of ids) {
+      if (piecesById[id]?.status === 'approved') {
+        skipped += 1;
+        ok += 1;
+        continue;
+      }
+      try {
+        await api(`/content/pieces/${id}/approve`, {
+          method: 'POST',
+          body: JSON.stringify({ approved_by: actor }),
+        });
+        ok += 1;
+      } catch (e) {
+        errors.push(`#${id}: ${e.message || 'error'}`);
+      }
+    }
+
+    if (ok > 0 && selectedArticleForApproval?.id) {
+      setApprovedArticleIds((prev) => new Set(prev).add(selectedArticleForApproval.id));
+    }
+    if (multiFormatContent?.pieces) {
+      const failed = new Set(
+        errors.map((msg) => {
+          const m = /^#(\d+)/.exec(msg);
+          return m ? Number(m[1]) : null;
+        }).filter(Boolean)
+      );
+      setMultiFormatContent({
+        ...multiFormatContent,
+        pieces: multiFormatContent.pieces.map((p) =>
+          ids.includes(p.id) && !failed.has(p.id) ? { ...p, status: 'approved' } : p
+        ),
+      });
+    }
+    await refreshPilotSources();
+    if (ok && !errors.length) {
+      notify(
+        skipped === ids.length
+          ? 'Los formatos de esta noticia ya estaban aprobados.'
+          : `${ok} formato(s) aprobados. Ya puedes publicar.`,
+        'success'
+      );
+    } else if (ok) {
+      notify(`${ok} aprobado(s); fallaron: ${errors.join('; ')}`, 'warn');
+    } else {
+      notify(errors[0] || 'No se pudo aprobar ningún formato', 'error');
+    }
+  };
+
+  const updateContentPiece = async (pieceId, bodyText, fieldKey) => {
+    if (!pieceId) {
+      notify('No hay pieza para guardar', 'warn');
+      return;
+    }
+    try {
+      await api(`/content/pieces/${pieceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ body_text: bodyText }),
+      });
+      setMultiFormatContent((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev };
+        if (fieldKey === 'linkedin_post') next.linkedin_post = bodyText;
+        if (fieldKey === 'video_script') next.video_script = bodyText;
+        if (fieldKey === 'newsletter_edition') next.newsletter_edition = bodyText;
+        if (fieldKey === 'carousel_slides') {
+          try {
+            const parsed = JSON.parse(bodyText);
+            next.carousel_slides = Array.isArray(parsed) ? parsed : parsed?.slides || bodyText;
+          } catch {
+            next.carousel_slides = bodyText;
+          }
+        }
+        next.pieces = (prev.pieces || []).map((p) =>
+          p.id === pieceId ? { ...p, body_text: bodyText, status: p.status === 'approved' ? 'pending_approval' : p.status } : p
+        );
+        return next;
+      });
+      notify('Contenido guardado', 'success');
+    } catch (e) {
+      notify(e.message || 'No se pudo guardar el contenido', 'error');
     }
   };
 
@@ -1134,31 +1258,6 @@ export default function App() {
       notify(`Reutilización creada: ${(data?.pieces || []).length || 0} derivados`, 'success');
     } catch (e) {
       notify(e.message || 'Error al reutilizar', 'error');
-    }
-  };
-
-  const attachPieceToFirstSlot = async (pieceId, formatType = null) => {
-    if (!pieceId) return;
-    try {
-      const piece = await api(`/content/pieces/${pieceId}`);
-      const fmt = formatType || piece?.format_type;
-      const slots = await api('/ops/calendar');
-      const open = (slots || []).filter((s) => !s.piece_id);
-      const slot =
-        open.find((s) => s.format_type === fmt) ||
-        open[0] ||
-        (slots || []).find((s) => s.format_type === fmt) ||
-        (slots || [])[0];
-      if (!slot) return notify('No hay slots de calendario. Genera el calendario primero.', 'warn');
-      await api(`/ops/calendar/${slot.id}/attach`, {
-        method: 'POST',
-        body: JSON.stringify({ actor: 'Juan Vasquez', piece_id: pieceId }),
-      });
-      await refreshPilotSources();
-      setActiveTab('ops');
-      notify(`Pieza ${pieceId} (${fmt}) adjunta al slot #${slot.id}`, 'success');
-    } catch (e) {
-      notify(e.message || 'Error al adjuntar', 'error');
     }
   };
 
@@ -1366,9 +1465,9 @@ export default function App() {
     );
   }
 
-  // Solo al generar tras “Usar esta noticia”; oculto en el resto de jobs/pantallas.
+  // Progreso visible: generar formatos (banner) o recolección RSS en curso
   const activityPanel =
-    formatGenBanner && robotJob?.key === 'multiformat' ? (
+    (formatGenBanner && robotJob?.key === 'multiformat') || robotJob?.key === 'collect' ? (
       <ActivityCenter
         status={ollamaStatus}
         job={robotJob}
@@ -1397,7 +1496,8 @@ export default function App() {
         userEmail={authUser.email}
         healthInfo={healthInfo}
         onCollect={triggerIngest}
-        collecting={loading || isBusy('collect')}
+        collecting={isBusy('collect')}
+        collectRunning={robotJob?.key === 'collect'}
         onLogout={async () => {
           await logout();
           setAuthUser(null);
@@ -1431,7 +1531,7 @@ export default function App() {
 
         {/* TAB 9: AI GATEWAY & MÉTRICAS (FASE 5) */}
         {activeTab === 'aigateway' && (
-          <AIGatewayTab
+          <AIHubTab
             loading={loading}
             isBusy={isBusy}
             aiUsageStats={aiUsageStats}
@@ -1441,15 +1541,9 @@ export default function App() {
             testPrompt={testPrompt}
             setTestPrompt={setTestPrompt}
             testResult={testResult}
-            onRefresh={fetchAiStats}
+            onRefreshModels={fetchAiStats}
             onCreateProvider={createAiProvider}
             onRunTest={runGatewayTest}
-          />
-        )}
-
-        {activeTab === 'agents' && (
-          <AgentsTab
-            isBusy={isBusy}
             agentsCatalog={agentsCatalog}
             agentArticleId={agentArticleId}
             setAgentArticleId={setAgentArticleId}
@@ -1460,36 +1554,13 @@ export default function App() {
             agentReason={agentReason}
             setAgentReason={setAgentReason}
             agentRunResult={agentRunResult}
-            onRefresh={fetchAgentsCatalog}
+            onRefreshAgents={fetchAgentsCatalog}
             onRunPipeline={runAgentsPipeline}
             onRunNamed={runNamedAgent}
           />
         )}
 
         {/* TAB 8: CALENDARIO, TAREAS & SEMÁFORO DE RIESGO (FASE 4) */}
-        {activeTab === 'ops' && (
-          <OpsCalendarTab
-            loading={loading}
-            calendarSlots={calendarSlots}
-            decisionLogs={decisionLogs}
-            onGenerateCalendar={async () => {
-              try {
-                await api('/ops/cadence/seed', { method: 'POST' });
-                await api('/ops/calendar/generate', { method: 'POST', body: JSON.stringify({ weeks: 2 }) });
-                await fetchOpsData();
-                notify('Calendario generado (2 semanas)');
-              } catch (e) {
-                notify(e.message || 'Error al generar calendario');
-              }
-            }}
-            onRefresh={fetchOpsData}
-            onCompleteTask={completeOpsTask}
-            onApproveSlot={approveSlot}
-            onPublishFromSlot={publishFromSlot}
-            onPrepareApproval={prepareSlotApproval}
-          />
-        )}
-
         {activeTab === 'refresh' && <RefreshTab notify={notify} />}
 
         {activeTab === 'multiformat' && (
@@ -1497,6 +1568,9 @@ export default function App() {
             selectedArticleForApproval={selectedArticleForApproval}
             selectedLanguage={selectedLanguage}
             onLanguageChange={changeFormatLanguage}
+            providerMode={providerMode}
+            onProviderModeChange={setProviderMode}
+            aiProviders={aiProviders}
             fetchMultiFormat={fetchMultiFormat}
             formatBusy={isBusy('multiformat')}
             selectedFormatSubTab={selectedFormatSubTab}
@@ -1508,9 +1582,9 @@ export default function App() {
             notify={notify}
             approveContentPiece={approveContentPiece}
             reuseContentPiece={reuseContentPiece}
-            attachPieceToFirstSlot={attachPieceToFirstSlot}
             parseCarouselJson={parseCarouselJson}
             goToTab={goToTab}
+            updateContentPiece={updateContentPiece}
           />
         )}
 
@@ -1520,21 +1594,6 @@ export default function App() {
             pillarDrafts={pillarDrafts}
             setPillarDrafts={setPillarDrafts}
             saveProfilePercentages={saveProfilePercentages}
-          />
-        )}
-
-        {activeTab === 'approval' && (
-          <ApprovalTab
-            selectedArticleForApproval={selectedArticleForApproval}
-            goToTab={goToTab}
-            handleApproveArticle={handleApproveArticle}
-            handleRejectArticle={handleRejectArticle}
-            pendingBlogPosts={pendingBlogPosts}
-            approvePendingBlog={approvePendingBlog}
-            publishPendingBlog={publishPendingBlog}
-            parseSummaryJson={parseSummaryJson}
-            triggerAnalyzeArticle={triggerAnalyzeArticle}
-            loading={loading}
           />
         )}
 
@@ -1550,8 +1609,6 @@ export default function App() {
         {activeTab === 'publish' && (
           <PublishTab notify={notify} publishedBlogPosts={publishedBlogPosts} goToTab={goToTab} />
         )}
-
-        {activeTab === 'legalseo' && <LegalSeoTab notify={notify} />}
 
         {activeTab === 'marketing' && <MarketingTab notify={notify} />}
 

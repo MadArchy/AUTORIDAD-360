@@ -33,8 +33,16 @@ API:
 3. Captura pública: `POST /api/v1/public/leads` con los mismos UTM
 4. Ver pipeline en **Resultados**
 
-## Guardrails
+## Agentes (LangGraph + LangChain tools)
 
-- No publicar 6 redes sin assets/aprobación
-- Claims legales: `supported` exige ≥1 evidencia
-- Nativo LinkedIn: ver `docs/LINKEDIN_LIVE.md`
+La orquestación corre sobre **LangGraph** (`StateGraph`). Las 6 tools editoriales
+(`scout_web`, `classify_*`, `verify_one`, `write_package`, `review_package`) se exponen
+como **`langchain_core.tools.StructuredTool`** (esquema Pydantic + `invoke`),
+pero la lógica de dominio sigue en servicios propios. El LLM usa `fase5_ai` / Ollama
+(no ChatOpenAI / ReAct).
+
+API estable: `GET/POST /api/v1/agents`, `POST /api/v1/agents/pipeline/run`.
+
+**Chroma:** el Scout (`scout_web`) usa `vector_engine` para deduplicar e indexar si
+`dependencies.chroma.active` es true (requiere `chromadb` + Ollama `nomic-embed-text`).
+Datos en `backend/chroma_data/`.

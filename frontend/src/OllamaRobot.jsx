@@ -99,7 +99,7 @@ export default function OllamaRobot({ status, job, onRefresh }) {
 }
 
 export const JOB_META = {
-  collect: { label: 'Recolectando feeds RSS', etaSec: 75, needsOllama: false },
+  collect: { label: 'Recolectando feeds RSS', etaSec: 600, needsOllama: false },
   analyze: { label: 'Clasificando y verificando con Ollama', etaSec: 55, needsOllama: true },
   classify: { label: 'Clasificando lote con Ollama', etaSec: 840, needsOllama: true },
   multiformat: { label: 'Generando paquete multi-formato', etaSec: 480, needsOllama: true },

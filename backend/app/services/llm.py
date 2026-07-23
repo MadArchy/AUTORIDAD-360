@@ -39,20 +39,34 @@ def _call_ollama(prompt: str) -> str:
         "model": settings.ollama_model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
-        "options": {"temperature": 0.1},
+        "think": False,
+        "options": {"temperature": 0.1, "num_predict": 1200},
     }
     with httpx.Client(timeout=settings.llm_request_timeout_seconds) as client:
         response = client.post(url, json=payload)
         response.raise_for_status()
         data = response.json()
-    return data["message"]["content"]
+    message = data.get("message") or {}
+    content = (message.get("content") or "").strip()
+    if not content:
+        content = (message.get("thinking") or "").strip()
+    if not content:
+        raise ValueError("Ollama returned empty content")
+    return content
 
 
-def _call_model(db: Session, task_type: str, prompt: str) -> tuple[str, str]:
+def _call_model(
+    db: Session,
+    task_type: str,
+    prompt: str,
+    provider_mode: str | None = None,
+) -> tuple[str, str]:
     """Gateway Fase 5. Retorna (texto, model_used)."""
     from app.services.fase5_ai import complete
 
-    text, meta = complete(db, task_type=task_type, prompt=prompt)
+    text, meta = complete(
+        db, task_type=task_type, prompt=prompt, provider_mode=provider_mode
+    )
     return text, str(meta.get("model_used") or settings.ollama_model)
 
 

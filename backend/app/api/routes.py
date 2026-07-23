@@ -69,6 +69,12 @@ class ApprovalRequest(BaseModel):
     approved_by: str = Field(min_length=2, max_length=128)
 
 
+class PieceUpdateRequest(BaseModel):
+    body_text: str | None = None
+    title: str | None = Field(default=None, max_length=512)
+    body_json: dict | list | None = None
+
+
 class RejectionRequest(BaseModel):
     approved_by: str = Field(min_length=2, max_length=128)
     reason: str = Field(min_length=5)
@@ -840,6 +846,11 @@ def _profile_response(profile: ProfessionalProfile, db: Session) -> dict:
 class GeneratePackageRequest(BaseModel):
     languages: list[str] = Field(default_factory=lambda: ["es"])
     prefer_llm: bool = True
+    formats: list[str] | None = None
+    package_id: int | None = None
+    regenerate: bool = False
+    # local = Ollama | cloud = API key | auto = local primero, cloud si falla
+    provider_mode: str = "local"
 
 
 @router.post("/content/from-article/{article_id}")
@@ -877,6 +888,10 @@ def generate_content_package(
                 "languages": req.languages,
                 "prefer_llm": req.prefer_llm,
                 "organization_id": ctx.org_id,
+                "formats": req.formats,
+                "package_id": req.package_id,
+                "regenerate": req.regenerate,
+                "provider_mode": req.provider_mode,
             },
         )
         return job_to_dict(job)
@@ -887,6 +902,10 @@ def generate_content_package(
             languages=req.languages,
             prefer_llm=req.prefer_llm,
             organization_id=ctx.org_id,
+            formats=req.formats,
+            package_id=req.package_id,
+            regenerate=req.regenerate,
+            provider_mode=req.provider_mode,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -989,6 +1008,55 @@ def get_piece(
     return _piece_response(piece)
 
 
+@router.patch("/content/pieces/{piece_id}")
+def update_piece(
+    piece_id: int,
+    body: PieceUpdateRequest,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Edición humana del borrador antes de aprobar/publicar."""
+    require_roles(ctx, *_STAFF)
+    piece = (
+        db.query(ContentPiece)
+        .filter(
+            ContentPiece.id == piece_id,
+            ContentPiece.organization_id == ctx.org_id,
+        )
+        .first()
+    )
+    if not piece:
+        raise HTTPException(404, "Piece not found")
+    if body.title is not None:
+        piece.title = body.title.strip() or piece.title
+    if body.body_text is not None:
+        piece.body_text = body.body_text
+        if piece.format_type == "carousel":
+            try:
+                import json as _json
+
+                parsed = _json.loads(body.body_text)
+                if isinstance(parsed, list):
+                    piece.body_json = {"slides": parsed}
+                elif isinstance(parsed, dict):
+                    piece.body_json = parsed
+            except Exception:
+                pass
+    if body.body_json is not None:
+        piece.body_json = body.body_json if isinstance(body.body_json, dict) else {"slides": body.body_json}
+    # Tras editar, vuelve a pendiente de aprobación
+    if piece.status == "approved":
+        piece.status = "pending_approval"
+        piece.approved_by = None
+        piece.approved_at = None
+    package = db.query(ContentPackage).filter(ContentPackage.id == piece.package_id).first()
+    if package:
+        _refresh_package_status(package, db)
+    db.commit()
+    db.refresh(piece)
+    return _piece_response(piece)
+
+
 @router.post("/content/pieces/{piece_id}/approve")
 def approve_piece(
     piece_id: int,
@@ -1007,7 +1075,18 @@ def approve_piece(
     )
     if not piece:
         raise HTTPException(404, "Piece not found")
-    if piece.status not in ("pending_approval", "rejected", "brand_failed", "factual_failed"):
+    # Idempotente: ya aprobada
+    if piece.status == "approved":
+        return _piece_response(piece)
+    approvable = (
+        "pending_approval",
+        "rejected",
+        "brand_failed",
+        "factual_failed",
+        "argumentative_failed",
+        "draft",
+    )
+    if piece.status not in approvable:
         raise HTTPException(400, f"Cannot approve piece in status '{piece.status}'")
     # Solo se puede aprobar si pasó factual (o re-revisión manual consciente)
     factual = piece.factual_review_json or {}

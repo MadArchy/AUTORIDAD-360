@@ -407,6 +407,9 @@ def resolve_generation_prompt(
         key=lambda r: (0 if r.organization_id == organization_id else 1, -int(r.version or 0))
     )
     chosen = rows[0]
+    # Plantillas seed demasiado cortas producen solo paráfrasis; usar fallback rico
+    if len((chosen.body or "").strip()) < 400:
+        return fallback.format(**format_kwargs), None
     try:
         return chosen.body.format(**format_kwargs), chosen.id
     except (KeyError, ValueError):

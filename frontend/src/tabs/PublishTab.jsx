@@ -14,7 +14,6 @@ export default function PublishTab({ notify, publishedBlogPosts = [], goToTab })
   const [selected, setSelected] = useState(null);
   const [sourceType, setSourceType] = useState('blog_post');
   const [sourceId, setSourceId] = useState('');
-  const [slotId, setSlotId] = useState('');
   const [pickedChannels, setPickedChannels] = useState(DEFAULT_CHANNELS);
   const [busy, setBusy] = useState(false);
   const [mediaTitle, setMediaTitle] = useState('');
@@ -113,31 +112,6 @@ export default function PublishTab({ notify, publishedBlogPosts = [], goToTab })
       notify?.('Paquete multi-canal listo (modo asistido)');
     } catch (e) {
       notify?.(e.message || 'Error al crear paquete');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const createFromSlot = async () => {
-    const id = Number(slotId);
-    if (!id) {
-      notify?.('Indica ID de slot de calendario');
-      return;
-    }
-    setBusy(true);
-    try {
-      const pkg = await api(`/publish/from-slot/${id}`, {
-        method: 'POST',
-        body: JSON.stringify({
-          channels: pickedChannels.length ? pickedChannels : null,
-          media_asset_ids: pickedMedia,
-        }),
-      });
-      setSelected(pkg);
-      await load();
-      notify?.(`Paquete creado desde slot #${id} (fecha del calendario)`);
-    } catch (e) {
-      notify?.(e.message || 'Error desde slot');
     } finally {
       setBusy(false);
     }
@@ -289,7 +263,7 @@ export default function PublishTab({ notify, publishedBlogPosts = [], goToTab })
   return (
     <section className="glass-panel" style={{ padding: 24 }}>
       <div className="flow-step-banner">
-        <span>Paso 4 de 4 · Publicar</span>
+        <span>Paso 3 de 3 · Publicar</span>
         <button type="button" className="btn btn-primary" onClick={() => goToTab?.('hoy')}>
           Volver a Hoy
         </button>
@@ -376,21 +350,6 @@ export default function PublishTab({ notify, publishedBlogPosts = [], goToTab })
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
             <button type="button" className="btn btn-primary" disabled={busy} onClick={createPackage}>
               <Send size={14} /> Crear paquete
-            </button>
-          </div>
-          <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: 6 }}>
-            O desde slot de calendario
-          </label>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              type="number"
-              placeholder="ID slot"
-              value={slotId}
-              onChange={(e) => setSlotId(e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <button type="button" className="btn btn-secondary" disabled={busy} onClick={createFromSlot}>
-              Desde slot
             </button>
           </div>
         </article>
@@ -482,33 +441,16 @@ export default function PublishTab({ notify, publishedBlogPosts = [], goToTab })
       {schedule && (
         <div className="glass-card" style={{ padding: 16, marginBottom: 20 }}>
           <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 8 }}>
-            Calendario unificado (14 días)
+            Jobs programados (14 días)
           </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <div>
-              <strong style={{ fontSize: '0.8rem' }}>Slots editoriales</strong>
-              <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: '0.8rem' }}>
-                {(schedule.calendar_slots || []).slice(0, 8).map((s) => (
-                  <li key={`s-${s.id}`}>
-                    #{s.id} · {s.format_type} · {s.status} · {s.scheduled_at?.slice(0, 16)}
-                  </li>
-                ))}
-                {(schedule.calendar_slots || []).length === 0 && <li>Sin slots en ventana</li>}
-              </ul>
-            </div>
-            <div>
-              <strong style={{ fontSize: '0.8rem' }}>Publish jobs</strong>
-              <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: '0.8rem' }}>
-                {(schedule.publish_jobs || []).slice(0, 8).map((j) => (
-                  <li key={`j-${j.id}`}>
-                    #{j.id} · {j.channel} · {j.status} · {j.scheduled_at?.slice(0, 16)}
-                    {j.calendar_slot_id ? ` · slot ${j.calendar_slot_id}` : ''}
-                  </li>
-                ))}
-                {(schedule.publish_jobs || []).length === 0 && <li>Sin jobs programados</li>}
-              </ul>
-            </div>
-          </div>
+          <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: '0.8rem' }}>
+            {(schedule.publish_jobs || []).slice(0, 8).map((j) => (
+              <li key={`j-${j.id}`}>
+                #{j.id} · {j.channel} · {j.status} · {j.scheduled_at?.slice(0, 16)}
+              </li>
+            ))}
+            {(schedule.publish_jobs || []).length === 0 && <li>Sin jobs programados</li>}
+          </ul>
         </div>
       )}
 
@@ -553,9 +495,6 @@ export default function PublishTab({ notify, publishedBlogPosts = [], goToTab })
               </h3>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 16 }}>
                 Estado: {selected.status}
-                {selected.brief?.calendar_slot_id
-                  ? ` · slot #${selected.brief.calendar_slot_id}`
-                  : ''}
               </p>
               {(selected.variants || []).map((v) => {
                 const checklist = v.payload?.assisted_checklist || [];

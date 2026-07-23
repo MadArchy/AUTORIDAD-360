@@ -13,18 +13,17 @@ from app.config import settings
 from app.models import ContentPackage, ContentPiece, NewsArticle, ProfessionalProfile
 from app.services.audit import log_audit
 from app.services.content_review import run_reviews
-from app.services.llm import _call_model, _extract_json, _prompt_hash
+from app.services.llm import _call_model, _extract_json, _prompt_hash, grounding_score
 from app.services.quota import get_active_profile
-
-FORMATS = ("linkedin", "video_script", "carousel", "newsletter")
-logger = logging.getLogger(__name__)
-
 from app.services.prompts.content_prompts import (
     GENERATION_PROMPT,
+    LINKEDIN_REWRITE_PROMPT,
     NARRATIVE_ANGLES,
     get_rewrite_prompt,
 )
 
+FORMATS = ("linkedin", "video_script", "carousel", "newsletter")
+logger = logging.getLogger(__name__)
 
 def language_instruction(code: str) -> str:
     """Instrucción explícita de idioma para el LLM (códigos cortos no bastan)."""
@@ -185,6 +184,7 @@ def _llm_draft(
     article: NewsArticle,
     format_type: str,
     language: str,
+    provider_mode: str = "auto",
 ) -> dict[str, Any]:
     import random
     from datetime import datetime
@@ -211,7 +211,8 @@ def _llm_draft(
         ),
         "summary": article.summary or "",
         "key_facts": json.dumps(facts, ensure_ascii=False),
-        "full_text": (article.full_text or "")[:10000],
+        # Menos contexto = menos prompt_eval en Ollama (ganancia grande en CPU local)
+        "full_text": (article.full_text or "")[:3500],
     }
     from app.services.legal_seo_service import resolve_generation_prompt
 
@@ -222,7 +223,9 @@ def _llm_draft(
         format_kwargs=format_kwargs,
         fallback=GENERATION_PROMPT,
     )
-    raw, model_used = _call_model(db, "generate_content", prompt)
+    raw, model_used = _call_model(
+        db, "generate_content", prompt, provider_mode=provider_mode
+    )
     data = _extract_json(raw)
 
     # Gemma a menudo cambia article_id/source_url → no tumbar a plantilla por eso
@@ -236,11 +239,16 @@ def _llm_draft(
     if not data.get("body_text") or not data.get("title"):
         raise ValueError("Generation rejected: missing title/body_text")
 
-    # Crítico argumentativo: no bloquear LinkedIn si falla/timeout
+    source_excerpt = (article.full_text or article.summary or "")[:5000]
+    paraphrase_ratio = grounding_score(str(data.get("body_text") or ""), source_excerpt)
+    has_perspective = "mi perspectiva" in str(data.get("body_text") or "").lower()
+
+    # Crítico argumentativo (opcional, formatos largos)
     critique_result: dict[str, Any] = {
         "skip_rewrite": True,
         "provider_failed": False,
-        "critique": "Crítica omitida para formato de baja complejidad.",
+        "critique": "Crítica omitida.",
+        "paraphrase_ratio": round(paraphrase_ratio, 3),
     }
     if settings.content_critic_enabled and format_type in {"carousel", "newsletter"}:
         try:
@@ -249,40 +257,71 @@ def _llm_draft(
                 draft_text=data.get("body_text", ""),
                 source_text=article.full_text or "",
             )
+            critique_result["paraphrase_ratio"] = round(paraphrase_ratio, 3)
         except Exception as exc:  # noqa: BLE001
             critique_result = {
                 "skip_rewrite": True,
                 "provider_failed": True,
                 "critique": f"Crítico omitido: {exc}",
+                "paraphrase_ratio": round(paraphrase_ratio, 3),
             }
 
-    if (
+    needs_argument_rewrite = (
         not critique_result.get("skip_rewrite")
         and not critique_result.get("provider_failed")
         and critique_result.get("argumentative_score", 100) < 80
-        and format_type != "linkedin"  # LinkedIn: una pasada basta (evita mismo post 2x)
-    ):
-        rewrite_prompt = get_rewrite_prompt(
-            format_type=format_type,
-            critique=critique_result.get("critique", ""),
-            suggestions=critique_result.get("suggestions", []),
-            angle=angle,
-            title=article.title,
-            article_id=article.id,
-            source_url=article.source_url,
-            raw_draft=raw,
+        and format_type != "linkedin"
+    )
+    # LinkedIn: una sola reescritura si es parafraseo o falta "Mi perspectiva"
+    needs_linkedin_depth = format_type == "linkedin" and (
+        paraphrase_ratio >= 0.62 or not has_perspective
+    )
+
+    if needs_argument_rewrite or needs_linkedin_depth:
+        if needs_linkedin_depth:
+            rewrite_prompt = LINKEDIN_REWRITE_PROMPT.format(
+                article_id=article.id,
+                source_url=article.source_url,
+                language=language,
+                language_instruction=language_instruction(language),
+                angle=angle,
+                title=article.title,
+                raw_draft=str(data.get("body_text") or "")[:3500],
+                key_facts=json.dumps(facts, ensure_ascii=False),
+            )
+        else:
+            rewrite_prompt = get_rewrite_prompt(
+                format_type=format_type,
+                critique=critique_result.get("critique", ""),
+                suggestions=critique_result.get("suggestions", []),
+                angle=angle,
+                title=article.title,
+                article_id=article.id,
+                source_url=article.source_url,
+                raw_draft=raw,
+            )
+        raw_retry, retry_model = _call_model(
+            db, "generate_content", rewrite_prompt, provider_mode=provider_mode
         )
-        raw_retry, retry_model = _call_model(db, "generate_content", rewrite_prompt)
         try:
             data_retry = _extract_json(raw_retry)
             if data_retry.get("body_text"):
                 data_retry["article_id"] = article.id
                 data_retry["source_url"] = article.source_url
                 data_retry["format_type"] = format_type
+                data_retry["language"] = language
                 data = data_retry
                 model_used = retry_model
                 data["was_rewritten"] = True
-                critique_result["note"] = "Reescrito tras crítica."
+                critique_result["note"] = (
+                    "Reescrito: más análisis / menos paráfrasis."
+                    if needs_linkedin_depth
+                    else "Reescrito tras crítica."
+                )
+                critique_result["paraphrase_ratio_after"] = round(
+                    grounding_score(str(data.get("body_text") or ""), source_excerpt),
+                    3,
+                )
         except Exception:
             pass
 
@@ -290,6 +329,7 @@ def _llm_draft(
     data["narrative_angle"] = angle
     data["generation_mode"] = "gateway"
     data["model_used"] = model_used
+    data["provider_mode"] = provider_mode
     data["prompt_hash"] = _prompt_hash(prompt)
 
     body = str(data["body_text"])
@@ -354,6 +394,7 @@ def _llm_package_drafts(
     db: Session,
     article: NewsArticle,
     language: str,
+    provider_mode: str = "auto",
 ) -> dict[str, dict[str, Any]]:
     """Genera los cuatro formatos en una sola inferencia; faltantes usan fallback."""
     facts = _key_facts(article)
@@ -387,9 +428,11 @@ ARTÍCULO: {article.title}
 RESUMEN: {article.summary or ""}
 HECHOS VERIFICADOS: {json.dumps(facts, ensure_ascii=False)}
 FUENTE: {article.source_url}
-TEXTO: {(article.full_text or "")[:8000]}
+TEXTO: {(article.full_text or "")[:3500]}
 """
-    raw, model_used = _call_model(db, "generate_content_batch", prompt)
+    raw, model_used = _call_model(
+        db, "generate_content_batch", prompt, provider_mode=provider_mode
+    )
     data = _extract_json(raw)
     pieces = data.get("pieces")
     if not isinstance(pieces, list):
@@ -441,10 +484,13 @@ def generate_piece_payload(
     language: str = "es",
     prefer_llm: bool = True,
     db: Session | None = None,
+    provider_mode: str = "auto",
 ) -> dict[str, Any]:
     if prefer_llm and db is not None:
         try:
-            return _llm_draft(db, article, format_type, language)
+            return _llm_draft(
+                db, article, format_type, language, provider_mode=provider_mode
+            )
         except Exception as exc:
             draft = _deterministic_draft(article, format_type, language)
             draft["llm_error"] = str(exc)
@@ -513,32 +559,70 @@ def create_content_package(
     prefer_llm: bool = True,
     profile: ProfessionalProfile | None = None,
     organization_id: int | None = None,
+    formats: list[str] | None = None,
+    package_id: int | None = None,
+    regenerate: bool = False,
+    provider_mode: str = "auto",
 ) -> ContentPackage:
     started = time.perf_counter()
-    if article.status not in ("verified", "approved", "published"):
+    if article.status not in ("verified", "approved", "published", "collected", "classified"):
         raise ValueError(
-            f"Article must be verified before content generation (status={article.status})"
+            f"Article must be collected/verified before content generation (status={article.status})"
         )
 
     profile = profile or get_active_profile(db)
     languages = languages or ["es"]
+    wanted = [f for f in (formats or list(FORMATS)) if f in FORMATS]
+    if not wanted:
+        wanted = list(FORMATS)
 
-    package = ContentPackage(
-        organization_id=organization_id or getattr(article, "organization_id", None),
-        article_id=article.id,
-        profile_id=profile.id if profile else None,
-        status="reviewing",
-    )
-    db.add(package)
-    db.flush()
+    package: ContentPackage | None = None
+    if package_id is not None:
+        package = (
+            db.query(ContentPackage)
+            .filter(
+                ContentPackage.id == package_id,
+                ContentPackage.article_id == article.id,
+            )
+            .first()
+        )
+        if not package:
+            raise ValueError("Package not found for article")
+    else:
+        # Reutilizar el paquete más reciente del artículo (generación por etapas)
+        q = db.query(ContentPackage).filter(ContentPackage.article_id == article.id)
+        if organization_id is not None:
+            q = q.filter(ContentPackage.organization_id == organization_id)
+        package = q.order_by(ContentPackage.id.desc()).first()
+
+    if package is None:
+        package = ContentPackage(
+            organization_id=organization_id or getattr(article, "organization_id", None),
+            article_id=article.id,
+            profile_id=profile.id if profile else None,
+            status="reviewing",
+        )
+        db.add(package)
+        db.flush()
+    else:
+        package.status = "reviewing"
+        db.flush()
 
     for lang in languages:
         batch_drafts: dict[str, dict[str, Any]] = {}
         batch_duration_ms = 0
-        if prefer_llm and settings.content_batch_generation_enabled:
+        # Batch LLM solo tiene sentido si pedimos los 4 formatos de una vez
+        use_batch = (
+            prefer_llm
+            and settings.content_batch_generation_enabled
+            and set(wanted) == set(FORMATS)
+        )
+        if use_batch:
             batch_started = time.perf_counter()
             try:
-                batch_drafts = _llm_package_drafts(db, article, lang)
+                batch_drafts = _llm_package_drafts(
+                    db, article, lang, provider_mode=provider_mode
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "content_batch_fallback article_id=%s language=%s error=%s",
@@ -549,7 +633,19 @@ def create_content_package(
             batch_duration_ms = round(
                 (time.perf_counter() - batch_started) * 1000
             )
-        for fmt in FORMATS:
+        for fmt in wanted:
+            existing = (
+                db.query(ContentPiece)
+                .filter(
+                    ContentPiece.package_id == package.id,
+                    ContentPiece.format_type == fmt,
+                    ContentPiece.language == lang,
+                )
+                .order_by(ContentPiece.id.desc())
+                .first()
+            )
+            if existing and not regenerate:
+                continue
             piece_started = time.perf_counter()
             payload = batch_drafts.get(fmt)
             if payload is None:
@@ -559,6 +655,7 @@ def create_content_package(
                     language=lang,
                     prefer_llm=prefer_llm,
                     db=db,
+                    provider_mode=provider_mode,
                 )
             elif batch_duration_ms:
                 payload["batch_duration_ms"] = batch_duration_ms
@@ -569,10 +666,11 @@ def create_content_package(
     db.commit()
     db.refresh(package)
     logger.info(
-        "content_package_complete package_id=%s article_id=%s pieces=%s duration_ms=%s",
+        "content_package_complete package_id=%s article_id=%s formats=%s languages=%s duration_ms=%s",
         package.id,
         article.id,
-        len(languages) * len(FORMATS),
+        wanted,
+        languages,
         round((time.perf_counter() - started) * 1000),
     )
     return package

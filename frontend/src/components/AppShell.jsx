@@ -3,9 +3,7 @@ import {
   Activity,
   BarChart2,
   BookOpen,
-  Bot,
   Building2,
-  Calendar,
   ChevronDown,
   ChevronRight,
   Cpu,
@@ -15,42 +13,51 @@ import {
   Megaphone,
   Newspaper,
   RefreshCw,
-  Scale,
   Send,
   ShieldCheck,
-  TrendingUp,
   User,
 } from 'lucide-react';
 
-const PRIMARY_NAV = [
-  ['hoy', 'Hoy', Home],
-  ['top10', 'Elegir', BarChart2],
-  ['approval', 'Aprobar', ShieldCheck],
-  ['publish', 'Publicar', Send],
+const NAV_GROUPS = [
+  {
+    title: 'Dashboard',
+    items: [
+      ['hoy', 'Hoy', Home],
+    ],
+  },
+  {
+    title: 'Descubrimiento',
+    items: [
+      ['top10', 'Elegir Tema', BarChart2],
+      ['live', 'Noticias en vivo', Newspaper],
+    ],
+  },
+  {
+    title: 'Distribución',
+    items: [
+      ['publish', 'Publicar', Send],
+      ['blog', 'Blog', BookOpen],
+      ['marketing', 'Marketing', Megaphone],
+    ],
+  },
+  {
+    title: 'Configuración',
+    items: [
+      ['profile', 'Perfil', User],
+      ['multiempresa', 'Organización', Building2],
+      ['aigateway', 'Inteligencia Artificial', Cpu],
+      ['report', 'Reportes', FileText],
+      ['refresh', 'Refrescar', RefreshCw],
+    ],
+  }
 ];
 
-const MORE_NAV = [
-  ['live', 'Noticias', Newspaper],
-  ['ops', 'Calendario', Calendar],
-  ['refresh', 'Refresh', RefreshCw],
-  ['blog', 'Blog', BookOpen],
-  ['legalseo', 'SEO / Legal', Scale],
-  ['marketing', 'Marketing', Megaphone],
-  ['report', 'Reportes', FileText],
-  ['metrics', 'Resultados', TrendingUp],
-  ['profile', 'Perfil', User],
-  ['aigateway', 'Modelos de IA', Cpu],
-  ['agents', 'Agentes', Bot],
-  ['multiempresa', 'Organización', Building2],
-];
+const ALL_ITEMS = NAV_GROUPS.flatMap(g => g.items);
 
 const TITLES = {
-  ...Object.fromEntries([...PRIMARY_NAV, ...MORE_NAV].map(([id, label]) => [id, label])),
-  // Destino tras “Usar esta noticia”; no es ítem del menú.
-  multiformat: 'Generar formatos',
+  ...Object.fromEntries(ALL_ITEMS.map(([id, label]) => [id, label])),
+  multiformat: 'Generar Formatos',
 };
-
-const MORE_IDS = new Set(MORE_NAV.map(([id]) => id));
 
 function NavButton({ id, label, Icon, active, onNavigate }) {
   return (
@@ -73,16 +80,14 @@ export default function AppShell({
   healthInfo,
   onCollect,
   collecting,
+  collectRunning = false,
   onLogout,
   activity,
   workflow,
   children,
 }) {
-  const [moreOpen, setMoreOpen] = useState(() => MORE_IDS.has(activeTab));
 
-  useEffect(() => {
-    if (MORE_IDS.has(activeTab)) setMoreOpen(true);
-  }, [activeTab]);
+  const collectBusy = collecting || collectRunning;
 
   return (
     <div className="app-shell">
@@ -98,35 +103,10 @@ export default function AppShell({
         </div>
 
         <nav className="sidebar-nav">
-          <div className="sidebar-group">
-            <span className="sidebar-group-label">Ciclo diario</span>
-            {PRIMARY_NAV.map(([id, label, Icon]) => (
-              <NavButton
-                key={id}
-                id={id}
-                label={label}
-                Icon={Icon}
-                active={
-                  activeTab === id ||
-                  (id === 'top10' && activeTab === 'multiformat')
-                }
-                onNavigate={onNavigate}
-              />
-            ))}
-          </div>
-
-          <div className="sidebar-group sidebar-group-more">
-            <button
-              type="button"
-              className="sidebar-more-toggle"
-              onClick={() => setMoreOpen((v) => !v)}
-              aria-expanded={moreOpen}
-            >
-              {moreOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-              <span>Más herramientas</span>
-            </button>
-            {moreOpen &&
-              MORE_NAV.map(([id, label, Icon]) => (
+          {NAV_GROUPS.map((group, idx) => (
+            <div key={idx} className="sidebar-group">
+              <span className="sidebar-group-label">{group.title}</span>
+              {group.items.map(([id, label, Icon]) => (
                 <NavButton
                   key={id}
                   id={id}
@@ -136,7 +116,8 @@ export default function AppShell({
                   onNavigate={onNavigate}
                 />
               ))}
-          </div>
+            </div>
+          ))}
         </nav>
 
         <div className="sidebar-account">
@@ -169,13 +150,22 @@ export default function AppShell({
               className="btn btn-primary"
               onClick={onCollect}
               disabled={collecting}
+              title={
+                collectRunning
+                  ? 'Recolección en segundo plano (puedes seguir trabajando)'
+                  : 'Actualizar feeds RSS'
+              }
             >
               <RefreshCw
                 size={16}
-                className={collecting ? 'animate-spin' : ''}
+                className={collectBusy ? 'animate-spin' : ''}
                 aria-hidden="true"
               />
-              {collecting ? 'Recolectando…' : 'Actualizar fuentes'}
+              {collecting
+                ? 'Iniciando…'
+                : collectRunning
+                  ? 'Recolectando…'
+                  : 'Actualizar fuentes'}
             </button>
           </div>
         </header>

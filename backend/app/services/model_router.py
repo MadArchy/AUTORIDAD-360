@@ -11,8 +11,10 @@ from __future__ import annotations
 TASK_ROUTING: dict[str, str] = {
     "classify": "local_first",
     "verify": "local_first",
-    "generate_content": "paid_preferred",
-    "translate": "paid_preferred",
+    # Solo hay Ollama local activo; paid_preferred solo añadía latencia inútil
+    "generate_content": "local_first",
+    "generate_content_batch": "local_first",
+    "translate": "local_first",
     "brand_rewrite": "local_first",
     "complex_analysis": "paid_only",
     "test_connection": "local_first",
@@ -33,6 +35,21 @@ COST_PER_1K: dict[str, float] = {
 
 def routing_mode(task_type: str) -> str:
     return TASK_ROUTING.get(task_type, "local_first")
+
+
+def resolve_routing_mode(
+    task_type: str,
+    provider_mode: str | None = None,
+) -> str:
+    """Convierte preferencia de UI (local/cloud/auto) a modo de enrutamiento."""
+    mode = (provider_mode or "auto").strip().lower()
+    if mode in {"local", "local_only", "ollama"}:
+        return "local_only"
+    if mode in {"cloud", "api", "paid", "paid_only", "web"}:
+        return "paid_only"
+    if mode in {"cloud_first", "paid_preferred"}:
+        return "paid_preferred"
+    return routing_mode(task_type)
 
 
 def estimate_cost(provider_type: str, prompt_tokens: int, completion_tokens: int) -> float:

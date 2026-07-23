@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Search, Layers, ExternalLink, MoreHorizontal } from 'lucide-react';
 
 /**
- * Paso 1 — Elegir noticia del Top 10.
+ * Paso 1 — Elegir noticia (al usarla se generan formatos).
  */
 export default function Top10Tab({
   top10,
@@ -19,7 +19,7 @@ export default function Top10Tab({
   return (
     <section className="glass-panel" style={{ padding: '24px' }}>
       <div className="flow-step-banner">
-        <span>Paso 1 de 4 · Elegir</span>
+        <span>Paso 1 de 3 · Elegir y generar</span>
         <button type="button" className="btn btn-secondary" onClick={() => goToTab?.('hoy')}>
           Ver Hoy
         </button>
@@ -29,8 +29,8 @@ export default function Top10Tab({
         <div>
           <h2 style={{ fontSize: '1.35rem', fontWeight: 800, marginBottom: '6px' }}>Elige una noticia</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>
-            Priorizadas por relevancia editorial. Usa una para generar los formatos.
-          </p>
+          Al usar una noticia, autorizas generar LinkedIn, video, carrusel y newsletter.
+        </p>
         </div>
         <div style={{ position: 'relative' }}>
           <button

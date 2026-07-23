@@ -14,9 +14,11 @@ export default function AIGatewayTab({
   onRefresh,
   onCreateProvider,
   onRunTest,
+  embedded = false,
 }) {
-  return (
-    <section className="glass-panel" style={{ padding: '24px' }}>
+  const body = (
+    <>
+      {!embedded && (
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div>
           <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>AI Gateway & Métricas de Consumo (Fase 5)</h2>
@@ -28,6 +30,14 @@ export default function AIGatewayTab({
           <RefreshCw size={16} /> Actualizar Métricas
         </button>
       </div>
+      )}
+      {embedded && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+          <button className="btn btn-secondary" onClick={onRefresh} disabled={loading}>
+            <RefreshCw size={16} /> Actualizar métricas
+          </button>
+        </div>
+      )}
 
       {aiUsageStats && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px', marginBottom: '28px' }}>
@@ -123,6 +133,13 @@ export default function AIGatewayTab({
           </div>
         )}
       </div>
+    </>
+  );
+
+  if (embedded) return body;
+  return (
+    <section className="glass-panel" style={{ padding: '24px' }}>
+      {body}
     </section>
   );
 }

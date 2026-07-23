@@ -755,8 +755,8 @@ textarea:focus-visible {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 22px 16px 16px;
-  background: #13171d;
+  padding: 24px 20px 20px;
+  background: #101318;
   border-right: 1px solid var(--bg-surface-border);
   overflow-y: auto;
 }
@@ -764,19 +764,20 @@ textarea:focus-visible {
 .app-brand {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 0 8px 22px;
+  gap: 12px;
+  padding: 0 8px 26px;
   border-bottom: 1px solid var(--bg-surface-border);
 }
 
 .app-brand-mark {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   display: grid;
   place-items: center;
-  border-radius: 9px;
+  border-radius: 10px;
   color: #fff;
-  background: var(--accent-blue);
+  background: linear-gradient(135deg, var(--accent-blue) 0%, #3b82f6 100%);
+  box-shadow: 0 4px 12px rgba(91, 141, 239, 0.2);
 }
 
 .app-brand div {
@@ -787,31 +788,32 @@ textarea:focus-visible {
 }
 
 .app-brand strong {
-  font-size: 0.98rem;
+  font-size: 1.05rem;
   letter-spacing: -0.01em;
+  font-weight: 700;
 }
 
 .app-brand div span {
   color: var(--text-muted);
-  font-size: 0.69rem;
+  font-size: 0.72rem;
 }
 
 .sidebar-nav {
   flex: 1;
-  padding: 20px 0;
+  padding: 24px 0;
 }
 
 .sidebar-group + .sidebar-group {
-  margin-top: 22px;
+  margin-top: 28px;
 }
 
 .sidebar-group-label {
   display: block;
-  padding: 0 10px 8px;
-  color: var(--text-muted);
-  font-size: 0.66rem;
+  padding: 0 12px 10px;
+  color: #6b7280;
+  font-size: 0.7rem;
   font-weight: 700;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -819,30 +821,33 @@ textarea:focus-visible {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
+  gap: 12px;
+  padding: 10px 12px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   color: var(--text-secondary);
   font: inherit;
-  font-size: 0.84rem;
+  font-size: 0.88rem;
+  font-weight: 400;
   text-align: left;
   cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .sidebar-link:hover {
   color: var(--text-primary);
-  background: #1c2129;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .sidebar-link.active {
-  color: #fff;
-  background: #263247;
+  color: var(--accent-blue);
+  background: rgba(91, 141, 239, 0.12);
+  font-weight: 500;
 }
 
 .sidebar-link.active svg {
-  color: #8bb2f5;
+  color: var(--accent-blue);
 }
 
 .sidebar-account {
