@@ -1,0 +1,111 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: autoridad360-mysql
+    environment:
+      MYSQL_DATABASE: autoridad360
+      MYSQL_USER: autoridad
+      MYSQL_PASSWORD: autoridadpass
+      MYSQL_ROOT_PASSWORD: rootpass_change_me
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=caching_sha2_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-prootpass_change_me"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: autoridad360-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: autoridad360-backend
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: mysql+pymysql://autoridad:autoridadpass@mysql:3306/autoridad360
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      APP_ENV: development
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  celery-worker-ingest:
+    build: ./backend
+    container_name: autoridad360-celery-ingest
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: mysql+pymysql://autoridad:autoridadpass@mysql:3306/autoridad360
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      APP_ENV: development
+    volumes:
+      - ./backend:/app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: celery -A app.tasks.celery_app worker --loglevel=info -Q ingest --concurrency=2 -n ingest@%h
+
+  celery-worker-editorial:
+    build: ./backend
+    container_name: autoridad360-celery-editorial
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: mysql+pymysql://autoridad:autoridadpass@mysql:3306/autoridad360
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      APP_ENV: development
+    volumes:
+      - ./backend:/app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: celery -A app.tasks.celery_app worker --loglevel=info -Q llm,generate,celery --concurrency=1 -n editorial@%h
+
+  celery-beat:
+    build: ./backend
+    container_name: autoridad360-celery-beat
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: mysql+pymysql://autoridad:autoridadpass@mysql:3306/autoridad360
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      APP_ENV: development
+    volumes:
+      - ./backend:/app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: celery -A app.tasks.celery_app beat --loglevel=info
+
+volumes:
+  mysql_data:

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Juan Vásquez · Análisis de autoridad para empresas</title>
+  <meta name="description" content="Notas publicadas sobre gobernanza, cumplimiento e inteligencia artificial para líderes empresariales. Por Juan Vásquez." />
+  <link rel="canonical" href="http://127.0.0.1:3002/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="es_MX" />
+  <meta property="og:site_name" content="Juan Vásquez" />
+  <meta property="og:title" content="Juan Vásquez · Análisis de autoridad para empresas" />
+  <meta property="og:description" content="Notas publicadas sobre gobernanza, cumplimiento e inteligencia artificial para líderes empresariales." />
+  <meta property="og:url" content="http://127.0.0.1:3002/" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Juan Vásquez · Análisis de autoridad" />
+  <meta name="twitter:description" content="Gobernanza, cumplimiento e IA para empresas." />
+  <meta name="author" content="Juan Vásquez" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "Juan Vásquez",
+    "url": "http://127.0.0.1:3002/",
+    "description": "Análisis de autoridad sobre gobernanza, cumplimiento e inteligencia artificial.",
+    "publisher": {
+      "@type": "Person",
+      "name": "Juan Vásquez"
+    }
+  }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=Source+Serif+4:wght@600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #e8eef7; --muted: #9aa8bc; --accent: #06b6d4;
+      --line: rgba(255,255,255,.1); --card: rgba(12,24,38,.72);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; color: var(--ink);
+      font-family: "DM Sans", system-ui, sans-serif;
+      background:
+        radial-gradient(ellipse 80% 50% at 10% -10%, rgba(6,182,212,.16), transparent 55%),
+        linear-gradient(165deg, #071018, #0c1a28 55%, #08141f);
+      min-height: 100vh;
+    }
+    .shell { max-width: 920px; margin: 0 auto; padding: 48px 20px 80px; }
+    .brand { font-family: "Source Serif 4", Georgia, serif; font-size: clamp(2.2rem, 6vw, 3.4rem); margin: 0 0 12px; }
+    .lede { color: var(--muted); max-width: 40rem; line-height: 1.55; margin: 0 0 36px; }
+    .list { display: flex; flex-direction: column; gap: 16px; }
+    .card {
+      display: block; padding: 22px; border: 1px solid var(--line); background: var(--card);
+      color: inherit; text-decoration: none; transition: border-color .2s, transform .2s;
+    }
+    .card:hover { border-color: rgba(6,182,212,.45); transform: translateY(-2px); }
+    .meta { font-size: .75rem; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+    .tag { color: var(--accent); background: rgba(6,182,212,.14); padding: 2px 8px; margin-right: 8px; }
+    .card h2 { font-family: "Source Serif 4", Georgia, serif; font-size: 1.3rem; margin: 0 0 8px; }
+    .card p { margin: 0; color: var(--muted); line-height: 1.5; font-size: .95rem; }
+    .empty, .err { padding: 28px; border: 1px dashed var(--line); color: var(--muted); text-align: center; }
+    .footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--line); font-size: .82rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <h1 class="brand">Juan Vásquez</h1>
+    <p class="lede">Análisis de autoridad para empresas: gobernanza, cumplimiento e inteligencia artificial. Solo notas publicadas con citación a fuente.</p>
+    <div id="root" class="list"><div class="empty">Cargando…</div></div>
+    <footer class="footer">© Juan Vásquez · <a href="/robots.txt" style="color:var(--accent)">robots</a> · <a href="/sitemap.xml" style="color:var(--accent)">sitemap</a></footer>
+  </main>
+  <script>
+    const SITE = location.origin;
+    const canonical = document.querySelector('link[rel="canonical"]');
+    if (canonical) canonical.href = SITE + '/';
+    document.querySelectorAll('meta[property="og:url"]').forEach((el) => { el.content = SITE + '/'; });
+    const ld = document.querySelector('script[type="application/ld+json"]');
+    if (ld) {
+      try {
+        const data = JSON.parse(ld.textContent);
+        data.url = SITE + '/';
+        ld.textContent = JSON.stringify(data);
+      } catch (_) { /* ignore */ }
+    }
+
+    const params = new URLSearchParams(location.search);
+    const API = params.get('api') || localStorage.getItem('a360_api') || 'http://127.0.0.1:8012/api/v1';
+    localStorage.setItem('a360_api', API);
+
+    async function applyBranding() {
+      try {
+        const res = await fetch(API + '/public/branding?host=' + encodeURIComponent(location.hostname));
+        if (!res.ok) return null;
+        const b = await res.json();
+        const name = b.display_name || 'Juan Vásquez';
+        const tagline = b.tagline || document.querySelector('.lede')?.textContent;
+        const accent = b.primary_color || b.accent_color || '#06b6d4';
+        document.documentElement.style.setProperty('--accent', accent);
+        const brandEl = document.querySelector('.brand');
+        if (brandEl) brandEl.textContent = name;
+        const lede = document.querySelector('.lede');
+        if (lede && b.tagline) lede.textContent = b.tagline;
+        const footer = document.querySelector('.footer');
+        if (footer) {
+          footer.innerHTML = '© ' + escapeHtml(name) +
+            ' · <a href="/robots.txt" style="color:var(--accent)">robots</a> · <a href="/sitemap.xml" style="color:var(--accent)">sitemap</a>';
+        }
+        document.title = name + ' · Análisis de autoridad para empresas';
+        document.querySelector('meta[property="og:site_name"]')?.setAttribute('content', name);
+        document.querySelector('meta[name="author"]')?.setAttribute('content', name);
+        if (b.favicon_url) {
+          let link = document.querySelector('link[rel="icon"]');
+          if (!link) {
+            link = document.createElement('link');
+            link.rel = 'icon';
+            document.head.appendChild(link);
+          }
+          link.href = b.favicon_url;
+        }
+        window.__A360_BRAND__ = b;
+        return b;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function excerpt(post) {
+      const raw = (post.original_summary || post.content_html || post.source_citation || '').toString();
+      const text = raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      return text ? (text.length > 220 ? text.slice(0, 220) + '…' : text) : 'Sin extracto.';
+    }
+
+    async function load() {
+      await applyBranding();
+      const root = document.getElementById('root');
+      try {
+        const res = await fetch(API + '/blog/published');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const posts = await res.json();
+        if (!posts.length) {
+          root.innerHTML = '<div class="empty">Pronto publicaremos nuevas notas.</div>';
+          return;
+        }
+        const brandName = (window.__A360_BRAND__ && window.__A360_BRAND__.display_name) || 'Juan Vásquez';
+        root.innerHTML = posts.map(p => `
+          <a class="card" href="/blog/${encodeURIComponent(p.slug)}">
+            <div class="meta"><span class="tag">Publicado</span>${p.published_at ? new Date(p.published_at).toLocaleDateString('es-MX') : ''}${(p.categories && p.categories[0]) ? ' · ' + escapeHtml(p.categories[0]) : ''}</div>
+            <h2>${escapeHtml(p.title)}</h2>
+            <p>${escapeHtml(excerpt(p))}</p>
+            <p style="margin-top:8px;font-size:.8rem;color:var(--muted)">${escapeHtml(p.author_name || brandName)}</p>
+          </a>
+        `).join('');
+        renderLeadForm(brandName);
+      } catch (e) {
+        root.innerHTML = `
+          <div class="err">
+            <p>No se pudo cargar el blog (${escapeHtml(e.message)}).</p>
+            <p style="margin-top:16px">
+              <button type="button" id="retry" style="cursor:pointer;padding:8px 14px;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:8px">Reintentar</button>
+            </p>
+          </div>`;
+        document.getElementById('retry')?.addEventListener('click', load);
+      }
+    }
+
+    function renderLeadForm(brandName) {
+      if (document.getElementById('lead-box')) return;
+      const box = document.createElement('section');
+      box.id = 'lead-box';
+      box.style.cssText = 'margin-top:36px;padding:20px;border:1px solid var(--line);background:var(--card)';
+      const utm = new URLSearchParams(location.search);
+      box.innerHTML = `
+        <h2 style="font-family:Source Serif 4,Georgia,serif;font-size:1.2rem;margin:0 0 8px">Conversemos</h2>
+        <p style="color:var(--muted);font-size:.9rem;margin:0 0 12px">Deja tus datos. ${escapeHtml(brandName)} te contactará. Los UTM de la URL se registran automáticamente.</p>
+        <form id="lead-form" style="display:flex;flex-wrap:wrap;gap:8px">
+          <input name="contact_name" required placeholder="Nombre *" style="flex:1;min-width:140px;padding:10px;border-radius:8px;border:1px solid var(--line);background:#0a1520;color:var(--ink)" />
+          <input name="contact_email" type="email" placeholder="Email" style="flex:1;min-width:140px;padding:10px;border-radius:8px;border:1px solid var(--line);background:#0a1520;color:var(--ink)" />
+          <input name="contact_company" placeholder="Empresa" style="flex:1;min-width:120px;padding:10px;border-radius:8px;border:1px solid var(--line);background:#0a1520;color:var(--ink)" />
+          <button type="submit" style="padding:10px 16px;border:0;border-radius:8px;background:var(--accent);color:#042028;font-weight:700;cursor:pointer">Enviar</button>
+        </form>
+        <p id="lead-msg" style="font-size:.82rem;color:var(--muted);margin:10px 0 0"></p>`;
+      document.querySelector('.shell')?.insertBefore(box, document.querySelector('.footer'));
+      document.getElementById('lead-form')?.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        const fd = new FormData(ev.target);
+        const msg = document.getElementById('lead-msg');
+        try {
+          const res = await fetch(API + '/public/leads', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contact_name: fd.get('contact_name'),
+              contact_email: fd.get('contact_email') || null,
+              contact_company: fd.get('contact_company') || null,
+              host: location.hostname,
+              source_channel: 'blog',
+              landing_url: location.href,
+              utm_source: utm.get('utm_source'),
+              utm_medium: utm.get('utm_medium'),
+              utm_campaign: utm.get('utm_campaign'),
+              utm_content: utm.get('utm_content'),
+              utm_term: utm.get('utm_term'),
+            }),
+          });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          msg.textContent = 'Gracias. Recibimos tu mensaje.';
+          msg.style.color = '#10B981';
+          ev.target.reset();
+        } catch (err) {
+          msg.textContent = 'No se pudo enviar: ' + err.message;
+          msg.style.color = '#fca5a5';
+        }
+      });
+    }
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    load();
+  </script>
+</body>
+</html>

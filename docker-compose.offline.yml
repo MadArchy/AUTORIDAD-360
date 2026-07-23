@@ -1,0 +1,29 @@
+# Puente TEMPORAL si el pull de mysql:8.4 falla (TLS/caché Docker).
+# Canónico de Etapa 1 = docker-compose.yml con MySQL.
+# No usar este archivo en producción.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: autoridad360-postgres
+    environment:
+      POSTGRES_DB: autoridad360
+      POSTGRES_USER: autoridad
+      POSTGRES_PASSWORD: autoridadpass
+    ports:
+      - "5433:5432"
+    volumes:
+      - autoridad_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autoridad -d autoridad360"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: autoridad360-redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  autoridad_pg_data:

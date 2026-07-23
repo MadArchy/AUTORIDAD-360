@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install deps
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+          pip install ruff
+      - name: Ruff lint (selected)
+        run: |
+          ruff check app/services/plans.py app/services/saas_service.py app/services/marketing_service.py app/api/public_routes.py app/api/saas_routes.py --select E,F,I --ignore E501
+      - name: Pytest unit (no DB docker)
+        env:
+          APP_ENV: development
+          JWT_SECRET_KEY: ci-jwt-secret-key-min-32-chars-long!!
+          API_KEY_ENCRYPTION_KEY: ci-enc-secret-key-min-32-chars-long!
+          SESSION_SECRET_KEY: ci-session-secret-key-min-32-chars!
+          DATABASE_URL: sqlite:///./ci.db
+        run: |
+          python -m pytest tests/test_fase0_safety.py tests/test_fase4_marketing.py tests/test_fase5_saas.py tests/test_fase5_gateway.py tests/test_publish_auth_unit.py -q --tb=line
