@@ -39,7 +39,7 @@ def test_batch_generation_returns_four_grounded_formats(monkeypatch):
     monkeypatch.setattr(
         content_generation,
         "_call_model",
-        lambda db, task_type, prompt: (raw, "test-model"),
+        lambda db, task_type, prompt, **kwargs: (raw, "test-model"),
     )
 
     drafts = content_generation._llm_package_drafts(object(), article, "es")

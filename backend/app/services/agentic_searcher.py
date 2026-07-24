@@ -14,10 +14,10 @@ from sqlalchemy.orm import Session
 from app.models.editorial import ArticleStatus, NewsArticle, NewsCategory
 from app.services.ai_gateway import AIGatewayService
 from app.services.news_typologies import (
-    NEWS_TYPOLOGIES,
     SEARCH_QUERIES,
-    TYPOLOGY_EVAL_PROMPT,
+    build_eval_prompt,
     queries_for_priorities,
+    typologies_from_profile,
     typology_by_id,
 )
 from app.services.vector_engine import vector_engine
@@ -38,6 +38,7 @@ class AgenticSearcherService:
         self.db = db
         self.organization_id = organization_id
         self.ai_gateway = AIGatewayService(db)
+        self._typologies: list[dict[str, Any]] | None = None
         categories_query = self.db.query(NewsCategory)
         articles_query = self.db.query(NewsArticle)
         if organization_id is not None:
@@ -60,8 +61,26 @@ class AgenticSearcherService:
         existing = articles_query.with_entities(NewsArticle.content_hash).all()
         self.seen_hashes = {r[0] for r in existing if r[0]}
 
+    def _load_typologies(self) -> list[dict[str, Any]]:
+        if self._typologies is not None:
+            return self._typologies
+        profile = None
+        try:
+            from app.services.quota import get_active_profile
+
+            profile = get_active_profile(self.db, organization_id=self.organization_id)
+            if profile and not profile.search_themes_json:
+                from app.services.news_typologies import default_search_themes
+
+                profile.search_themes_json = default_search_themes()
+                self.db.commit()
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("No se pudo cargar perfil para tipologías: %s", exc)
+        self._typologies = typologies_from_profile(profile)
+        return self._typologies
+
     def _category_for_typology(self, type_id: int | None) -> int:
-        typo = typology_by_id(type_id)
+        typo = typology_by_id(type_id, self._load_typologies())
         if not typo:
             return self.default_category_id
         # Preferir categoría RSS cuyo slug/name encaje con la tipología
@@ -103,10 +122,11 @@ class AgenticSearcherService:
             return None
 
     def _evaluate_with_ollama(self, text: str, title: str = "") -> dict[str, Any]:
-        """Evalúa relevancia + tipología editorial (1–11)."""
+        """Evalúa relevancia + tipología editorial según temas del perfil."""
         try:
             blob = f"TÍTULO: {title}\n\n{text}" if title else text
-            prompt = TYPOLOGY_EVAL_PROMPT.format(text=blob[:7500])
+            prompt_tmpl = build_eval_prompt(self._load_typologies())
+            prompt = prompt_tmpl.format(text=blob[:7500])
             res = self.ai_gateway.generate_text(
                 prompt=prompt,
                 system_prompt="Curador estricto Juan Vásquez. Devuelve SOLO JSON.",
@@ -142,9 +162,12 @@ class AgenticSearcherService:
         max_queries: int | None = None,
         max_priority: int = 11,
     ) -> dict[str, Any]:
-        """Ciclo de búsqueda priorizando tipologías 1–11 del PDF."""
+        """Ciclo de búsqueda priorizando tipologías del perfil (PDF + temas custom)."""
+        typologies = self._load_typologies()
         # Prioridad: tipologías altas primero
-        base = queries_for_priorities(max_priority=max_priority) or list(SEARCH_QUERIES)
+        base = queries_for_priorities(max_priority=max_priority, typologies=typologies) or list(
+            SEARCH_QUERIES
+        )
         queries = list(extra_queries or []) + base
 
         seen_q: set[str] = set()
@@ -169,7 +192,9 @@ class AgenticSearcherService:
             "saved_to_db": 0,
             "by_news_type": {},
             "queries": queries,
-            "typologies": [t["slug"] for t in NEWS_TYPOLOGIES if t["id"] <= max_priority],
+            "typologies": [
+                t["slug"] for t in typologies if int(t.get("id") or 99) <= max_priority
+            ],
         }
 
         with DDGS() as ddgs:
@@ -215,7 +240,7 @@ class AgenticSearcherService:
                         eval_data = self._evaluate_with_ollama(full_text, title=title)
                         relevance = float(eval_data.get("relevance_score") or 0)
                         type_id = eval_data.get("news_type_id")
-                        typo = typology_by_id(type_id) if type_id else None
+                        typo = typology_by_id(type_id, typologies) if type_id else None
 
                         logger.info(
                             "URL: %s | score=%s | type=%s | %s",

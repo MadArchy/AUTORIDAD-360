@@ -23,8 +23,8 @@ def test_routing_simple_local():
 
 
 def test_routing_complex_paid():
-    assert routing_mode("generate_content") == "paid_preferred"
-    assert routing_mode("translate") == "paid_preferred"
+    assert routing_mode("generate_content") == "local_first"
+    assert routing_mode("translate") == "local_first"
     assert routing_mode("complex_analysis") == "paid_only"
 
 

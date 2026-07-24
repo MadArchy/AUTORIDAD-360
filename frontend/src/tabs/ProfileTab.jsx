@@ -1,15 +1,47 @@
 import React from 'react';
-import { Sliders } from 'lucide-react';
+import { Plus, RotateCcw, Search, Sliders, Trash2 } from 'lucide-react';
 
 export default function ProfileTab({
   profile,
   pillarDrafts,
   setPillarDrafts,
-  saveProfilePercentages
+  saveProfilePercentages,
+  themeDrafts,
+  setThemeDrafts,
+  saveSearchThemes,
+  resetSearchThemes,
+  applyPdfPillarMix,
 }) {
+  const themes = themeDrafts || [];
+
+  const updateTheme = (index, patch) => {
+    setThemeDrafts(themes.map((t, i) => (i === index ? { ...t, ...patch } : t)));
+  };
+
+  const removeTheme = (index) => {
+    setThemeDrafts(themes.filter((_, i) => i !== index));
+  };
+
+  const addTheme = () => {
+    const nextId = themes.length + 1;
+    setThemeDrafts([
+      ...themes,
+      {
+        id: nextId,
+        slug: `tema-custom-${nextId}`,
+        name: '',
+        monitor: '',
+        why: '',
+        editorial_angle: '',
+        queries: [],
+        is_active: true,
+      },
+    ]);
+  };
+
   return (
     <>
-{!profile && (
+      {!profile && (
         <section className="glass-panel" style={{ padding: '24px', color: 'var(--text-secondary)' }}>
           Cargando perfil estratégico…
         </section>
@@ -25,7 +57,6 @@ export default function ProfileTab({
             <span className="brand-badge" style={{ fontSize: '0.85rem' }}>Perfil Piloto Activo</span>
           </div>
 
-          {/* Target Audiences & Services */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '28px' }}>
             <div className="glass-card" style={{ padding: '18px' }}>
               <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: '12px', color: 'var(--accent-purple)' }}>Públicos Objetivo</h3>
@@ -42,10 +73,123 @@ export default function ProfileTab({
             </div>
           </div>
 
-          {/* Pilares Editoriales y Corrección de Cuotas */}
-          <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Temas de búsqueda = tipologías del PDF + custom */}
+          <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Search size={20} style={{ color: 'var(--accent-cyan)' }} /> Temas de búsqueda (tipologías)
+          </h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginBottom: '16px', maxWidth: '820px' }}>
+            Estos temas alimentan la patrulla web y los motores de búsqueda. Incluyen las 11 tipologías del documento
+            de Juan Vásquez; puedes editar queries, desactivar o agregar temas nuevos.
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '16px' }}>
+            {themes.map((theme, index) => (
+              <div key={`${theme.slug}-${index}`} className="glass-card" style={{ padding: '18px', opacity: theme.is_active === false ? 0.55 : 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: '220px' }}>
+                    <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Nombre del tema</label>
+                    <input
+                      value={theme.name || ''}
+                      onChange={(e) => updateTheme(index, { name: e.target.value })}
+                      placeholder="Ej. Política y regulación de IA"
+                      style={{ width: '100%', marginTop: '4px', padding: '8px 10px', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', color: '#FFF', border: '1px solid rgba(255,255,255,0.2)' }}
+                    />
+                  </div>
+                  <div style={{ width: '180px' }}>
+                    <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Slug</label>
+                    <input
+                      value={theme.slug || ''}
+                      onChange={(e) => updateTheme(index, { slug: e.target.value })}
+                      style={{ width: '100%', marginTop: '4px', padding: '8px 10px', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', color: '#FFF', border: '1px solid rgba(255,255,255,0.2)' }}
+                    />
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', marginTop: '18px' }}>
+                    <input
+                      type="checkbox"
+                      checked={theme.is_active !== false}
+                      onChange={(e) => updateTheme(index, { is_active: e.target.checked })}
+                    />
+                    Activo
+                  </label>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => removeTheme(index)}
+                    title="Eliminar tema"
+                    style={{ marginTop: '14px', padding: '8px 10px' }}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+
+                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Qué monitorear</label>
+                <textarea
+                  value={theme.monitor || ''}
+                  onChange={(e) => updateTheme(index, { monitor: e.target.value })}
+                  rows={2}
+                  style={{ width: '100%', marginTop: '4px', marginBottom: '10px', padding: '8px 10px', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', color: '#FFF', border: '1px solid rgba(255,255,255,0.2)', resize: 'vertical' }}
+                />
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '10px' }}>
+                  <div>
+                    <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Por qué sirve</label>
+                    <textarea
+                      value={theme.why || ''}
+                      onChange={(e) => updateTheme(index, { why: e.target.value })}
+                      rows={2}
+                      style={{ width: '100%', marginTop: '4px', padding: '8px 10px', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', color: '#FFF', border: '1px solid rgba(255,255,255,0.2)', resize: 'vertical' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Ángulo editorial</label>
+                    <textarea
+                      value={theme.editorial_angle || ''}
+                      onChange={(e) => updateTheme(index, { editorial_angle: e.target.value })}
+                      rows={2}
+                      style={{ width: '100%', marginTop: '4px', padding: '8px 10px', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', color: '#FFF', border: '1px solid rgba(255,255,255,0.2)', resize: 'vertical' }}
+                    />
+                  </div>
+                </div>
+
+                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                  Queries de búsqueda (una por línea)
+                </label>
+                <textarea
+                  value={(theme.queries || []).join('\n')}
+                  onChange={(e) =>
+                    updateTheme(index, {
+                      queries: e.target.value
+                        .split('\n')
+                        .map((q) => q.trim())
+                        .filter(Boolean),
+                    })
+                  }
+                  rows={3}
+                  placeholder={'regulación inteligencia artificial México 2026\nUS AI regulation executive order'}
+                  style={{ width: '100%', marginTop: '4px', padding: '8px 10px', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', color: '#FFF', border: '1px solid rgba(255,255,255,0.2)', fontFamily: 'ui-monospace, monospace', fontSize: '0.82rem', resize: 'vertical' }}
+                />
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '28px' }}>
+            <button type="button" className="btn" onClick={addTheme}>
+              <Plus size={16} style={{ marginRight: 6 }} /> Agregar tema
+            </button>
+            <button type="button" className="btn btn-primary" onClick={saveSearchThemes}>
+              Guardar temas de búsqueda
+            </button>
+            <button type="button" className="btn" onClick={resetSearchThemes} title="Restaurar las 11 tipologías del PDF">
+              <RotateCcw size={16} style={{ marginRight: 6 }} /> Restaurar tipologías PDF
+            </button>
+          </div>
+
+          <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Sliders size={20} style={{ color: 'var(--accent-cyan)' }} /> Pilares Editoriales y Corrección Automática de Cuota
           </h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginBottom: '16px', maxWidth: '820px' }}>
+            Mix alineado al PDF de Juan (IA, gobernanza, PI, MX–US). Si un pilar va bajo meta, Top 10 y Hoy lo priorizan.
+          </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {profile.pillars.map((p) => (
@@ -66,8 +210,8 @@ export default function ProfileTab({
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Meta %:</span>
-                      <input 
-                        type="number" 
+                      <input
+                        type="number"
                         value={pillarDrafts[p.slug] ?? p.target_percentage}
                         onChange={(e) => setPillarDrafts({ ...pillarDrafts, [p.slug]: Number(e.target.value) })}
                         style={{ width: '65px', padding: '6px', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', color: '#FFF', border: '1px solid rgba(255,255,255,0.2)', textAlign: 'center', fontWeight: 700 }}
@@ -76,27 +220,25 @@ export default function ProfileTab({
                   </div>
                 </div>
 
-                {/* Progress Bar */}
                 <div style={{ width: '100%', background: 'rgba(255,255,255,0.08)', height: '10px', borderRadius: '5px', overflow: 'hidden', marginTop: '10px' }}>
-                  <div 
-                    style={{ 
-                      width: `${Math.min(p.current_month_pct, 100)}%`, 
-                      background: p.quota_status === 'below_quota' ? 'linear-gradient(90deg, #F59E0B, #10B981)' : 'linear-gradient(90deg, #3B82F6, #8B5CF6)', 
+                  <div
+                    style={{
+                      width: `${Math.min(p.current_month_pct, 100)}%`,
+                      background: p.quota_status === 'below_quota' ? 'linear-gradient(90deg, #F59E0B, #10B981)' : 'linear-gradient(90deg, #3B82F6, #8B5CF6)',
                       height: '100%',
                       borderRadius: '5px',
                       transition: 'width 0.4s ease'
-                    }} 
+                    }}
                   />
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '6px' }}>
-                  <span>Cobertura del Mes: <strong>{p.current_month_pct}%</strong> ({p.current_month_count} artículos)</span>
+                  <span>Cobertura del Mes: <strong>{p.current_month_pct}%</strong> ({p.current_month_count} piezas)</span>
                   <span>Meta Configurada: <strong>{p.target_percentage}%</strong></span>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Mercados Objetivo */}
           <h3 style={{ fontSize: '1.2rem', fontWeight: 800, margin: '28px 0 16px 0' }}>Distribución por Mercado Objetivo (MX vs US)</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
             {profile.markets.map((m) => (
@@ -107,14 +249,23 @@ export default function ProfileTab({
               </div>
             ))}
           </div>
-          <div style={{ marginTop: '24px' }}>
+          <div style={{ marginTop: '24px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button className="btn btn-primary" onClick={saveProfilePercentages}>
               Guardar porcentajes editoriales
             </button>
+            {applyPdfPillarMix && (
+              <button
+                type="button"
+                className="btn"
+                onClick={applyPdfPillarMix}
+                title="Aplica 30/25/20/15/10 del documento de Juan"
+              >
+                <RotateCcw size={16} style={{ marginRight: 6 }} /> Aplicar mix PDF
+              </button>
+            )}
           </div>
         </section>
       )}
-
     </>
   );
 }

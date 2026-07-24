@@ -1,5 +1,6 @@
-import React from 'react';
-import { Search, ArrowUpRight, ExternalLink } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, ArrowUpRight, ExternalLink, Sparkles } from 'lucide-react';
+import AICopilotDrawer from '../components/AICopilotDrawer';
 
 export default function LiveNewsTab({
   categories,
@@ -14,8 +15,21 @@ export default function LiveNewsTab({
   onUseInFlow,
   onClearFilters,
 }) {
+  const [copilotArticle, setCopilotArticle] = useState(null);
+
   return (
     <section className="glass-panel" style={{ padding: '24px' }}>
+      <AICopilotDrawer
+        isOpen={Boolean(copilotArticle)}
+        onClose={() => setCopilotArticle(null)}
+        targetItem={copilotArticle}
+        itemType="article"
+        onApplyRefinement={(newContent) => {
+          if (copilotArticle) {
+            copilotArticle.full_text = newContent;
+          }
+        }}
+      />
       <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
         <select
           value={selectedCategory}
@@ -86,6 +100,13 @@ export default function LiveNewsTab({
                 onClick={() => onUseInFlow(art)}
               >
                 <ArrowUpRight size={14} /> Usar en flujo
+              </button>
+              <button
+                className="btn btn-secondary"
+                style={{ padding: '6px 10px', fontSize: '0.78rem', background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2))', border: '1px solid rgba(168, 85, 247, 0.4)' }}
+                onClick={() => setCopilotArticle(art)}
+              >
+                <Sparkles size={13} color="#a855f7" /> Copiloto IA
               </button>
               <a href={art.url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: '0.78rem', textDecoration: 'none' }}>
                 Fuente <ExternalLink size={12} />

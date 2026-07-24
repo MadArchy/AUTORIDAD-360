@@ -27,6 +27,103 @@ QUOTA_BOOST_FACTOR = 0.5
 # Déficit mínimo (%) para aplicar boost (evita ruido)
 MIN_DEFICIT_PCT = 2.0
 
+# Mix editorial alineado a Tipos_de_Noticias_IA_Juan_Vasquez.pdf (opción A)
+# (slug, name, description, keywords, target_pct)
+JUAN_PILLAR_DEFS: list[tuple[str, str, str, list[str], float]] = [
+    (
+        "legal-tech-ia",
+        "Legal Tech, IA y gobernanza",
+        "Implementación de IA, legal tech, empleo y gobernanza tecnológica (núcleo del PDF).",
+        [
+            "ia",
+            "inteligencia artificial",
+            "legal tech",
+            "gobernanza",
+            "chatbot",
+            "piloto",
+            "automatización",
+            "empleo",
+            "recursos humanos",
+            "abogados",
+            "citación",
+        ],
+        30.0,
+    ),
+    (
+        "corporativo-compliance",
+        "Regulación, riesgo y compliance IA",
+        "Leyes, sanciones, privacidad y responsabilidad empresarial por uso de IA.",
+        [
+            "regulación",
+            "compliance",
+            "ley",
+            "demanda",
+            "sanción",
+            "ftc",
+            "privacidad",
+            "ciberseguridad",
+            "gdpr",
+            "datos personales",
+            "responsabilidad",
+            "litigio",
+        ],
+        25.0,
+    ),
+    (
+        "propiedad-intelectual",
+        "PI, patentes e innovación IA",
+        "Patentes, inventorship, copyright, secretos y titularidad de resultados de IA.",
+        [
+            "propiedad intelectual",
+            "patente",
+            "inventor",
+            "inventorship",
+            "copyright",
+            "secreto empresarial",
+            "marca",
+            "licencia",
+            "wipo",
+            "uspto",
+        ],
+        20.0,
+    ),
+    (
+        "comercio-mx-us",
+        "México–EE.UU. (IA y operaciones)",
+        "Operación binacional, datos cross-border, nearshoring tech y cumplimiento MX–US.",
+        [
+            "méxico",
+            "estados unidos",
+            "mx-us",
+            "cross-border",
+            "nearshoring",
+            "datos transfronterizos",
+            "t-mec",
+            "usmca",
+            "comercio",
+            "binacional",
+        ],
+        15.0,
+    ),
+    (
+        "emprendimiento",
+        "Inversión y negocios en IA",
+        "Fondos, M&A, data centers, presupuestos corporativos y expansión en IA.",
+        [
+            "inversión",
+            "startup",
+            "fondo",
+            "adquisición",
+            "data center",
+            "presupuesto",
+            "venture",
+            "alianza",
+            "m&a",
+        ],
+        10.0,
+    ),
+]
+
 
 @dataclass
 class PillarQuotaStatus:
@@ -184,6 +281,27 @@ def pillar_boost_map(snapshot: QuotaSnapshot) -> dict[str, float]:
     return boosts
 
 
+def match_best_pillar(
+    article: NewsArticle,
+    pillars: list[ContentPillar],
+    boosts: dict[str, float] | None = None,
+) -> tuple[str | None, float]:
+    """Mejor pilar que matchea el artículo (prioriza mayor boost / déficit)."""
+    boosts = boosts or {}
+    best_slug: str | None = None
+    best_boost = 0.0
+    for pillar in pillars:
+        if not _match_pillar(article, pillar):
+            continue
+        b = float(boosts.get(pillar.slug.lower(), 1.0))
+        # Preferir déficit; si empatan, cualquier match cuenta
+        score = b + 0.01  # tip: match > no match
+        if score > best_boost:
+            best_boost = score
+            best_slug = pillar.slug
+    return best_slug, (boosts.get(best_slug.lower(), 1.0) if best_slug else 1.0)
+
+
 def apply_quota_boost(
     article: NewsArticle,
     base_score: float,
@@ -194,35 +312,159 @@ def apply_quota_boost(
     Returns (adjusted_score, boost_applied, matched_pillar_slug).
     Usa el mayor boost entre pilares que matchean (el más deficitario).
     """
-    if not boosts or not pillars:
+    if not pillars:
         return base_score, 1.0, None
 
-    best_boost = 1.0
-    best_slug: str | None = None
-    for pillar in pillars:
-        if not _match_pillar(article, pillar):
-            continue
-        b = boosts.get(pillar.slug.lower(), 1.0)
-        if b > best_boost:
-            best_boost = b
-            best_slug = pillar.slug
+    matched, boost = match_best_pillar(article, pillars, boosts)
+    if not matched:
+        return base_score, 1.0, None
+    return round(base_score * boost, 2), boost, matched
 
-    return round(base_score * best_boost, 2), best_boost, best_slug
+
+def apply_pdf_pillar_mix(db: Session, profile: ProfessionalProfile) -> ProfessionalProfile:
+    """Actualiza copy, keywords y % de pilares al mix PDF (perfil existente)."""
+    validate_percentages_sum([p[4] for p in JUAN_PILLAR_DEFS], "editorial pillars")
+    by_slug = {p.slug: p for p in profile.pillars}
+    for slug, name, desc, keywords, target in JUAN_PILLAR_DEFS:
+        pillar = by_slug.get(slug)
+        if not pillar:
+            pillar = ContentPillar(
+                profile_id=profile.id,
+                slug=slug,
+                name=name,
+                description=desc,
+                keywords_json=keywords,
+                is_active=True,
+            )
+            db.add(pillar)
+            db.flush()
+            by_slug[slug] = pillar
+        else:
+            pillar.name = name
+            pillar.description = desc
+            pillar.keywords_json = keywords
+            pillar.is_active = True
+
+        row = (
+            db.query(EditorialPercentage)
+            .filter_by(profile_id=profile.id, pillar_id=pillar.id, period="monthly")
+            .first()
+        )
+        if row:
+            row.target_pct = target
+        else:
+            db.add(
+                EditorialPercentage(
+                    profile_id=profile.id,
+                    pillar_id=pillar.id,
+                    target_pct=target,
+                    period="monthly",
+                )
+            )
+
+    # Bio alineada al enfoque PDF
+    if profile.slug == "juan-vasquez":
+        profile.bio = (
+            "Perfil piloto de Autoridad 360. Contenido editorial alineado a "
+            "IA, gobernanza, Propiedad Intelectual y el eje México–Estados Unidos."
+        )
+        profile.title = "Abogado / Consultor — IA, gobernanza y posicionamiento MX-US"
+
+    log_audit(
+        db,
+        entity_type="professional_profile",
+        entity_id=profile.id,
+        action="pillar_mix_pdf",
+        actor="system",
+        output_summary="Mix editorial PDF Juan: 30/25/20/15/10",
+        metadata_json={"slug": profile.slug, "mix": "pdf-option-a"},
+    )
+    db.commit()
+    return get_active_profile(db, slug=profile.slug, organization_id=profile.organization_id) or profile
+
+
+def suggest_quota_articles(
+    db: Session,
+    profile: ProfessionalProfile,
+    *,
+    limit: int = 5,
+    days: int = 30,
+) -> list[dict]:
+    """Noticias priorizadas por pilares en déficit (collected+verified)."""
+    from datetime import timedelta
+
+    from app.services.scoring import RANKABLE_STATUSES
+
+    snapshot = compute_quota_snapshot(db, profile)
+    boosts = pillar_boost_map(snapshot)
+    pillars = [p for p in profile.pillars if p.is_active]
+    pillar_names = {p.slug: p.name for p in pillars}
+    deficit_slugs = {
+        p.pillar_slug
+        for p in snapshot.pillars
+        if p.deficit_pct >= MIN_DEFICIT_PCT
+    }
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    filters = [
+        NewsArticle.status.in_(RANKABLE_STATUSES),
+        NewsArticle.created_at >= cutoff,
+    ]
+    if profile.organization_id is not None:
+        filters.append(NewsArticle.organization_id == profile.organization_id)
+    articles = db.query(NewsArticle).filter(*filters).all()
+
+    ranked: list[tuple[float, float, str | None, NewsArticle]] = []
+    for article in articles:
+        base = float(article.total_score or 0) or 50.0
+        adjusted, boost, matched = apply_quota_boost(article, base, boosts, pillars)
+        priority = adjusted
+        if matched and matched in deficit_slugs:
+            priority += 15.0
+        elif matched:
+            priority += 8.0
+        elif boost > 1.0:
+            priority += 5.0
+        ranked.append((priority, boost, matched, article))
+
+    ranked.sort(key=lambda x: x[0], reverse=True)
+    out: list[dict] = []
+    for priority, boost, matched, article in ranked[: max(1, limit)]:
+        out.append(
+            {
+                "article_id": article.id,
+                "title": article.title,
+                "summary": article.summary or article.excerpt,
+                "source_name": article.source_name,
+                "status": article.status,
+                "total_score": round(priority, 2),
+                "quota_boost": boost,
+                "matched_pillar": matched,
+                "matched_pillar_name": pillar_names.get(matched) if matched else None,
+                "quota_priority": bool(matched and matched in deficit_slugs),
+            }
+        )
+    return out
 
 
 def seed_juan_profile(db: Session) -> ProfessionalProfile:
     """Perfil piloto Juan Vásquez con pilares y porcentajes de arranque."""
+    from app.services.news_typologies import default_search_themes
+
     existing = db.query(ProfessionalProfile).filter_by(slug="juan-vasquez").first()
     if existing:
-        return existing
+        if not existing.search_themes_json:
+            existing.search_themes_json = default_search_themes()
+            db.commit()
+        # No reescribe % en cada seed; usar apply_pdf_pillar_mix / endpoint rebalance
+        return get_active_profile(db, slug="juan-vasquez") or existing
 
     profile = ProfessionalProfile(
         slug="juan-vasquez",
         full_name="Juan Vásquez",
-        title="Abogado / Consultor — posicionamiento MX-US",
+        title="Abogado / Consultor — IA, gobernanza y posicionamiento MX-US",
         bio=(
             "Perfil piloto de Autoridad 360. Contenido editorial alineado a "
-            "derecho corporativo, comercio MX-US, compliance e IA legal."
+            "IA, gobernanza, Propiedad Intelectual y el eje México–Estados Unidos."
         ),
         services_json=[
             "Asesoría corporativa transfronteriza",
@@ -240,45 +482,7 @@ def seed_juan_profile(db: Session) -> ProfessionalProfile:
     db.add(profile)
     db.flush()
 
-    pillar_defs = [
-        (
-            "corporativo-compliance",
-            "Corporativo y Compliance",
-            "Derecho societario, cumplimiento y regulación",
-            ["corporativo", "compliance", "regulación", "sociedades", "sec", "cnbv", "gobierno corporativo", "aml"],
-            30.0,
-        ),
-        (
-            "comercio-mx-us",
-            "Comercio e Inmigración MX-US",
-            "Trade, visas y operaciones transfronterizas",
-            ["comercio", "inmigración", "visa", "trade", "mx-us", "uscis", "t-mec", "usmca", "arancel", "nearshoring", "aduana"],
-            25.0,
-        ),
-        (
-            "legal-tech-ia",
-            "Legal Tech e IA",
-            "Tecnología legal e inteligencia artificial aplicada",
-            ["ia", "inteligencia artificial", "legal tech", "tecnología", "privacidad", "datos personales", "gdpr"],
-            20.0,
-        ),
-        (
-            "propiedad-intelectual",
-            "Propiedad Intelectual",
-            "Marcas, patentes y activos intangibles",
-            ["propiedad intelectual", "marca", "patente", "wipo", "copyright", "marca registrada"],
-            15.0,
-        ),
-        (
-            "emprendimiento",
-            "Emprendimiento y Negocios",
-            "Startups, finanzas y estrategia de negocio",
-            ["emprendimiento", "startup", "negocios", "finanzas", "inversión", "pyme"],
-            10.0,
-        ),
-    ]
-
-    for slug, name, desc, keywords, target in pillar_defs:
+    for slug, name, desc, keywords, target in JUAN_PILLAR_DEFS:
         pillar = ContentPillar(
             profile_id=profile.id,
             slug=slug,
@@ -301,7 +505,9 @@ def seed_juan_profile(db: Session) -> ProfessionalProfile:
     db.add(MarketPercentage(profile_id=profile.id, market_code="MX", target_pct=55.0))
     db.add(MarketPercentage(profile_id=profile.id, market_code="US", target_pct=45.0))
 
-    validate_percentages_sum([p[4] for p in pillar_defs], "editorial pillars")
+    profile.search_themes_json = default_search_themes()
+
+    validate_percentages_sum([p[4] for p in JUAN_PILLAR_DEFS], "editorial pillars")
     validate_percentages_sum([55.0, 45.0], "markets")
 
     log_audit(
@@ -310,7 +516,7 @@ def seed_juan_profile(db: Session) -> ProfessionalProfile:
         entity_id=0,
         action="seeded",
         actor="system",
-        output_summary="Seed perfil Juan Vásquez + pilares + porcentajes",
+        output_summary="Seed perfil Juan Vásquez + pilares + porcentajes PDF",
         metadata_json={"slug": "juan-vasquez"},
     )
     db.commit()

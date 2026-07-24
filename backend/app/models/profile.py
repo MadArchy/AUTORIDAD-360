@@ -20,6 +20,8 @@ class ProfessionalProfile(Base):
     services_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
     audiences_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
     markets_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Tipologías de búsqueda editables (PDF Juan Vásquez / temas custom)
+    search_themes_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(

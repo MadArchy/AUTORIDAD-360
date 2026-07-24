@@ -78,16 +78,26 @@ class AgenticSearchRequest(BaseModel):
 
 @router.get("/ops/news-typologies")
 def list_news_typologies(
+    db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_tenant_context),
 ):
-    """Catálogo editorial del PDF Tipos_de_Noticias_IA_Juan_Vasquez."""
+    """Catálogo editorial del perfil (PDF Tipos_de_Noticias + temas custom)."""
     require_roles(ctx, *_OPS_STAFF)
-    from app.services.news_typologies import describe_typologies, SEARCH_QUERIES
+    from app.services.news_typologies import (
+        SEARCH_QUERIES,
+        describe_typologies,
+        queries_for_priorities,
+        typologies_from_profile,
+    )
+    from app.services.quota import get_active_profile
 
+    profile = get_active_profile(db, organization_id=ctx.org_id)
+    typologies = typologies_from_profile(profile)
+    queries = queries_for_priorities(typologies=typologies) or list(SEARCH_QUERIES)
     return {
-        "source": "Tipos_de_Noticias_IA_Juan_Vasquez.pdf",
-        "typologies": describe_typologies(),
-        "query_count": len(SEARCH_QUERIES),
+        "source": "profile.search_themes / Tipos_de_Noticias_IA_Juan_Vasquez.pdf",
+        "typologies": describe_typologies(typologies),
+        "query_count": len(queries),
         "quality_filter": (
             "Priorizar noticias que respondan: qué ocurrió, por qué importa, "
             "qué riesgo/oportunidad y qué debería revisar una empresa."

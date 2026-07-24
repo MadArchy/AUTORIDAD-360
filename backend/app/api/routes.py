@@ -25,9 +25,12 @@ from app.services.content_generation import (
 from app.services.content_generation import _refresh_package_status
 from app.services.llm import classify_article, process_unclassified, verify_article
 from app.services.quota import (
+    apply_pdf_pillar_mix,
     compute_quota_snapshot,
     get_active_profile,
+    pillar_boost_map,
     seed_juan_profile,
+    suggest_quota_articles,
     validate_percentages_sum,
 )
 from app.services.reports import create_blog_draft_from_article, generate_weekly_report
@@ -100,6 +103,22 @@ class MarketPctUpdate(BaseModel):
 class ProfilePercentagesUpdate(BaseModel):
     editorial: list[EditorialPctUpdate]
     markets: list[MarketPctUpdate]
+
+
+class SearchThemeItem(BaseModel):
+    id: int | None = None
+    slug: str | None = None
+    name: str
+    monitor: str | None = None
+    why: str | None = None
+    editorial_angle: str | None = None
+    queries: list[str] = Field(default_factory=list)
+    is_active: bool = True
+
+
+class SearchThemesUpdate(BaseModel):
+    themes: list[SearchThemeItem] = Field(default_factory=list)
+    reset_to_defaults: bool = False
 
 
 @router.get("/health")
@@ -355,12 +374,13 @@ def analyze_article_async(
 
 @router.get("/top10")
 def top10(
-    days: int = 7,
+    days: int = 30,
+    limit: int = 10,
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_tenant_context),
 ):
     require_roles(ctx, *_STAFF)
-    scored = get_top10(db, days=days, organization_id=ctx.org_id)
+    scored = get_top10(db, days=days, organization_id=ctx.org_id, limit=limit)
     return [
         {
             "rank": i,
@@ -368,11 +388,14 @@ def top10(
             "title": s.article.title,
             "source_url": s.article.source_url,
             "source_name": s.article.source_name,
+            "status": s.article.status,
             "total_score": s.total_score,
             "base_score": s.base_score,
             "quota_boost": s.quota_boost,
             "matched_pillar": s.matched_pillar,
-            "summary": s.article.summary,
+            "matched_pillar_name": s.matched_pillar_name,
+            "quota_priority": bool(s.quota_boost and s.quota_boost > 1.0),
+            "summary": s.article.summary or s.article.excerpt,
         }
         for i, s in enumerate(scored, start=1)
     ]
@@ -690,6 +713,13 @@ def get_profile(
         profile = get_active_profile(db, slug=slug, organization_id=ctx.org_id)
     if not profile:
         raise HTTPException(404, "Profile not found")
+    # Sembrar tipologías del PDF si el perfil aún no las tiene
+    if not profile.search_themes_json:
+        from app.services.news_typologies import default_search_themes
+
+        profile.search_themes_json = default_search_themes()
+        db.commit()
+        db.refresh(profile)
     return _profile_response(profile, db)
 
 
@@ -709,6 +739,7 @@ def get_quota_status(
     if not profile:
         raise HTTPException(404, "Profile not found")
     snapshot = compute_quota_snapshot(db, profile)
+    boosts = pillar_boost_map(snapshot)
     return {
         "profile_id": snapshot.profile_id,
         "profile_slug": snapshot.profile_slug,
@@ -722,6 +753,7 @@ def get_quota_status(
                 "actual_pct": p.actual_pct,
                 "deficit_pct": p.deficit_pct,
                 "count": p.count,
+                "quota_boost": boosts.get(p.pillar_slug.lower(), 1.0),
                 "needs_boost": p.deficit_pct >= 2.0,
             }
             for p in snapshot.pillars
@@ -794,8 +826,75 @@ def update_percentages(
     return _profile_response(profile, db)
 
 
+@router.put("/profile/search-themes")
+def update_search_themes(
+    body: SearchThemesUpdate,
+    slug: str = "juan-vasquez",
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Temas de búsqueda (tipologías PDF + temas custom) que alimentan la patrulla."""
+    require_roles(ctx, *_PROFILE_MANAGERS)
+    from app.services.news_typologies import default_search_themes, normalize_themes
+
+    profile = get_active_profile(db, slug=slug, organization_id=ctx.org_id)
+    if not profile:
+        raise HTTPException(404, "Profile not found")
+
+    if body.reset_to_defaults:
+        themes = default_search_themes()
+    else:
+        themes = normalize_themes([t.model_dump() for t in body.themes])
+        if not themes:
+            raise HTTPException(400, "Debes enviar al menos un tema con nombre")
+
+    profile.search_themes_json = themes
+    db.commit()
+    profile = get_active_profile(db, slug=slug, organization_id=ctx.org_id)
+    return _profile_response(profile, db)
+
+
+@router.post("/profile/pillars/rebalance")
+def rebalance_pillars_pdf(
+    slug: str = "juan-vasquez",
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Aplica el mix editorial PDF (30/25/20/15/10) al perfil."""
+    require_roles(ctx, *_PROFILE_MANAGERS)
+    profile = get_active_profile(db, slug=slug, organization_id=ctx.org_id)
+    if not profile:
+        raise HTTPException(404, "Profile not found")
+    profile = apply_pdf_pillar_mix(db, profile)
+    return _profile_response(profile, db)
+
+
+@router.get("/profile/quota-suggestions")
+def quota_suggestions(
+    limit: int = 5,
+    slug: str = "juan-vasquez",
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Noticias prioritarias para pilares en déficit (Hoy)."""
+    require_roles(ctx, *_STAFF)
+    profile = get_active_profile(db, slug=slug, organization_id=ctx.org_id)
+    if not profile:
+        raise HTTPException(404, "Profile not found")
+    return {
+        "profile_slug": profile.slug,
+        "suggestions": suggest_quota_articles(db, profile, limit=min(max(limit, 1), 15)),
+    }
+
+
 def _profile_response(profile: ProfessionalProfile, db: Session) -> dict:
+    from app.services.news_typologies import default_search_themes, normalize_themes
+
     snapshot = compute_quota_snapshot(db, profile)
+    boosts = pillar_boost_map(snapshot)
+    themes = normalize_themes(profile.search_themes_json)
+    if not themes:
+        themes = default_search_themes()
     return {
         "id": profile.id,
         "slug": profile.slug,
@@ -805,6 +904,7 @@ def _profile_response(profile: ProfessionalProfile, db: Session) -> dict:
         "services": profile.services_json or [],
         "audiences": profile.audiences_json or [],
         "markets": profile.markets_json or {},
+        "search_themes": themes,
         "pillars": [
             {
                 "id": p.id,
@@ -833,11 +933,25 @@ def _profile_response(profile: ProfessionalProfile, db: Session) -> dict:
             "pillars": [
                 {
                     "slug": p.pillar_slug,
+                    "name": p.pillar_name,
                     "target_pct": p.target_pct,
                     "actual_pct": p.actual_pct,
                     "deficit_pct": p.deficit_pct,
+                    "count": p.count,
+                    "quota_boost": boosts.get(p.pillar_slug.lower(), 1.0),
+                    "needs_boost": p.deficit_pct >= 2.0,
                 }
                 for p in snapshot.pillars
+            ],
+            "deficit_pillars": [
+                {
+                    "slug": p.pillar_slug,
+                    "name": p.pillar_name,
+                    "deficit_pct": p.deficit_pct,
+                    "quota_boost": boosts.get(p.pillar_slug.lower(), 1.0),
+                }
+                for p in snapshot.pillars
+                if p.deficit_pct >= 2.0
             ],
         },
     }
@@ -1310,3 +1424,57 @@ def _blog_response(
         "original_full_text": article.full_text[:2000] if article and article.full_text else None,
         "verification": verification,
     }
+
+
+class CopilotRequest(BaseModel):
+    instruction: str = Field(min_length=2, max_length=2000)
+    target_field: str = Field(default="full_text")
+    provider_mode: str = Field(default="auto")
+
+
+@router.post("/articles/{article_id}/copilot")
+def copilot_refine_article_route(
+    article_id: int,
+    req: CopilotRequest,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    require_roles(ctx, *_STAFF)
+    try:
+        from app.services.ai_copilot_service import refine_article_content
+        res = refine_article_content(
+            db,
+            article_id=article_id,
+            instruction=req.instruction,
+            target_field=req.target_field,
+            provider_mode=req.provider_mode,
+        )
+        return res
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+
+@router.post("/blog/{post_id}/copilot")
+def copilot_refine_blog_route(
+    post_id: int,
+    req: CopilotRequest,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    require_roles(ctx, *_STAFF)
+    try:
+        from app.services.ai_copilot_service import refine_blog_post_content
+        res = refine_blog_post_content(
+            db,
+            post_id=post_id,
+            instruction=req.instruction,
+            target_field=req.target_field if req.target_field != "full_text" else "content_html",
+            provider_mode=req.provider_mode,
+        )
+        return res
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc

@@ -27,7 +27,7 @@ export default function ApprovalTab({
           <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>
             Todavía no hay artículo seleccionado. Empieza eligiendo una noticia.
           </p>
-          <button className="btn btn-primary" onClick={() => goToTab('top10')}>Ir a Elegir</button>
+          <button className="btn btn-primary" onClick={() => goToTab('hoy')}>Ir a Hoy</button>
         </section>
       )}
       {selectedArticleForApproval && (

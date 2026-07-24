@@ -190,6 +190,9 @@ export async function api(path, options = {}) {
   return res.json();
 }
 
+/** Alias usado por AICopilotDrawer y otros componentes legacy. */
+export const fetchApi = api;
+
 /** Une cuota + pilares al shape que espera la UI. */
 export function normalizeProfile(raw) {
   if (!raw) return null;
@@ -204,14 +207,17 @@ export function normalizeProfile(raw) {
     const target = Number(pctBySlug[p.slug] ?? q.target_pct ?? 0);
     const actual = Number(q.actual_pct ?? 0);
     const deficit = Number(q.deficit_pct ?? Math.max(0, target - actual));
-    const boost = deficit >= 2 ? Number((1 + (deficit / 100) * 0.5).toFixed(2)) : 1;
+    const boost = Number(q.quota_boost ?? 1);
+    const needsBoost = Boolean(q.needs_boost ?? deficit >= 2);
     return {
       ...p,
       target_percentage: target,
       current_month_pct: actual,
       current_month_count: q.count ?? q.article_count ?? 0,
-      quota_status: deficit >= 2 ? 'below_quota' : 'ok',
+      deficit_pct: deficit,
+      quota_status: needsBoost ? 'below_quota' : 'ok',
       quota_boost: boost,
+      needs_boost: needsBoost,
     };
   });
   const markets = (raw.market_percentages || []).map((m, i) => ({
@@ -229,6 +235,8 @@ export function normalizeProfile(raw) {
     ...raw,
     target_audiences: raw.audiences || raw.target_audiences || [],
     services: raw.services || [],
+    search_themes: Array.isArray(raw.search_themes) ? raw.search_themes : [],
+    deficit_pillars: raw.quota?.deficit_pillars || [],
     pillars,
     markets,
   };

@@ -5,12 +5,17 @@ export function normalizeTop10(items) {
     ...it,
     id: it.article_id ?? it.id,
     top10_score: Math.round(Number(it.total_score ?? 0)),
-    verification_status: it.verification_status || 'verified',
-    category: it.matched_pillar || it.category || 'editorial',
+    verification_status: it.status || it.verification_status || 'collected',
+    status: it.status || it.verification_status || 'collected',
+    category: it.matched_pillar_name || it.matched_pillar || it.category || 'editorial',
+    matched_pillar: it.matched_pillar || null,
+    matched_pillar_name: it.matched_pillar_name || null,
     content_full: it.summary || '',
     summary: typeof it.summary === 'string' ? it.summary : '',
     url: it.source_url,
     source_name: it.source_name || 'Fuente',
+    quota_priority: Boolean(it.quota_priority || (Number(it.quota_boost) > 1)),
+    quota_boost: Number(it.quota_boost ?? 1),
   }));
 }
 

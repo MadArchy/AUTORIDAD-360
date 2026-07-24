@@ -242,7 +242,7 @@ export default function MultiFormatTab({
           <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>
             Primero elige una noticia. Luego activa solo el formato que necesites (LinkedIn, video, etc.).
           </p>
-          <button className="btn btn-primary" onClick={() => goToTab('top10')}>
+          <button className="btn btn-primary" onClick={() => goToTab('hoy')}>
             Ir a Elegir tema
           </button>
         </section>

@@ -4,7 +4,7 @@ set ROOT=%~dp0
 cd /d "%ROOT%"
 
 echo [1/4] Docker Postgres+Redis...
-docker compose -f docker-compose.offline.yml up -d
+docker compose -f docker-compose.offline.yml up -d --wait
 if errorlevel 1 (
   echo ERROR: docker compose fallo
   exit /b 1

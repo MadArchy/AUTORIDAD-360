@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   Activity,
-  BarChart2,
   BookOpen,
   Building2,
   ChevronDown,
@@ -23,12 +22,6 @@ const NAV_GROUPS = [
     title: 'Dashboard',
     items: [
       ['hoy', 'Hoy', Home],
-    ],
-  },
-  {
-    title: 'Descubrimiento',
-    items: [
-      ['top10', 'Elegir Tema', BarChart2],
       ['live', 'Noticias en vivo', Newspaper],
     ],
   },
@@ -47,7 +40,6 @@ const NAV_GROUPS = [
       ['multiempresa', 'Organización', Building2],
       ['aigateway', 'Inteligencia Artificial', Cpu],
       ['report', 'Reportes', FileText],
-      ['refresh', 'Refrescar', RefreshCw],
     ],
   }
 ];

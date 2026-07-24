@@ -59,7 +59,6 @@ import { JOB_META } from './OllamaRobot';
 import AppShell from './components/AppShell';
 import ActivityCenter from './components/ActivityCenter';
 import LoginScreen from './LoginScreen';
-import Top10Tab from './tabs/Top10Tab';
 import AIHubTab from './tabs/AIHubTab';
 import LiveNewsTab from './tabs/LiveNewsTab';
 import MultiFormatTab from './tabs/MultiFormatTab';
@@ -67,18 +66,24 @@ import ProfileTab from './tabs/ProfileTab';
 import BlogTab from './tabs/BlogTab';
 import PublishTab from './tabs/PublishTab';
 import MarketingTab from './tabs/MarketingTab';
-import RefreshTab from './tabs/RefreshTab';
 import ReportTab from './tabs/ReportTab';
 import MultiEmpresaTab from './tabs/MultiEmpresaTab';
 import MetricsTab from './tabs/MetricsTab';
 import HoyTab from './tabs/HoyTab';
-import { normalizeTop10, normalizeArticle } from './utils/normalizers';
 import { enqueueJob, getRememberedJobs, waitForJob } from './jobs';
+import { normalizeTop10, normalizeArticle } from './utils/normalizers';
 
 export default function App() {
   const [authUser, setAuthUser] = useState(() => (isAuthenticated() ? getStoredUser() : null));
   const [healthInfo, setHealthInfo] = useState(null);
   const [activeTab, setActiveTab] = useState('hoy');
+
+  useEffect(() => {
+    // Pestañas ocultas: si el estado quedó ahí, vuelve a Hoy
+    if (['refresh', 'legalseo', 'agents', 'approval', 'metrics', 'top10'].includes(activeTab)) {
+      setActiveTab(activeTab === 'agents' ? 'aigateway' : 'hoy');
+    }
+  }, [activeTab]);
   const [articles, setArticles] = useState([]);
   const [top10, setTop10] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -146,6 +151,8 @@ export default function App() {
   const [pendingBlogPosts, setPendingBlogPosts] = useState([]);
   const [publishedBlogPosts, setPublishedBlogPosts] = useState([]);
   const [pillarDrafts, setPillarDrafts] = useState({});
+  const [themeDrafts, setThemeDrafts] = useState([]);
+  const [quotaSuggestions, setQuotaSuggestions] = useState([]);
   const [multiFormatError, setMultiFormatError] = useState('');
   const [reportError, setReportError] = useState('');
   const [contentPackages, setContentPackages] = useState([]);
@@ -262,6 +269,7 @@ export default function App() {
     fetchTop10();
     fetchArticles();
     fetchProfile();
+    fetchQuotaSuggestions();
     refreshPilotSources();
   }, [authUser]);
 
@@ -322,12 +330,19 @@ export default function App() {
     if (tab === 'approval') tab = 'multiformat';
     if (tab === 'legalseo') tab = 'hoy';
     if (tab === 'agents') tab = 'aigateway';
+    if (tab === 'refresh') tab = 'hoy';
+    if (tab === 'top10') tab = 'hoy';
     setActiveTab(tab);
     if (tab === 'aigateway') {
       fetchAiStats();
       fetchAgentsCatalog();
     }
     if (tab === 'profile') fetchProfile();
+    if (tab === 'hoy') {
+      fetchProfile();
+      fetchQuotaSuggestions();
+      fetchTop10();
+    }
     if (tab === 'report') fetchReport();
     if (tab === 'multiempresa') fetchOrgData();
     if (tab === 'metrics') fetchMetricsData();
@@ -336,13 +351,14 @@ export default function App() {
       fetchPublishedBlogs();
     }
     if (tab === 'live') fetchArticles();
-    if (['blog', 'metrics', 'multiformat', 'approval', 'top10'].includes(tab)) {
+    if (['blog', 'metrics', 'multiformat', 'approval'].includes(tab)) {
       if (tab === 'blog' || tab === 'metrics') refreshPilotSources();
     }
   };
 
   const useArticleInFlow = (art) => {
     const normalized = normalizeArticle(art);
+    const articleId = art.article_id ?? art.id;
     const title = (art.title || '').toLowerCase();
     if (
       title.includes('shipping') ||
@@ -359,7 +375,7 @@ export default function App() {
     setMultiFormatError('');
     setSelectedArticleForApproval({
       ...normalized,
-      id: art.id,
+      id: articleId,
       content_full: art.summary || art.content_full || '',
       summary: art.summary || '',
       url: art.source_url || art.url,
@@ -409,9 +425,9 @@ export default function App() {
     {
       id: 'elegir',
       label: 'Elegir y generar',
-      tab: 'top10',
-      hint: 'Elige una noticia y genera el formato que necesites',
-      cta: 'Abrir Top 10',
+      tab: 'hoy',
+      hint: 'Usa una noticia del ranking de arriba',
+      cta: 'Ver ranking',
     },
     {
       id: 'publish',
@@ -451,6 +467,13 @@ export default function App() {
       const drafts = {};
       for (const p of data?.pillars || []) drafts[p.slug] = p.target_percentage;
       setPillarDrafts(drafts);
+      setThemeDrafts(
+        (data?.search_themes || []).map((t) => ({
+          ...t,
+          queries: Array.isArray(t.queries) ? t.queries : [],
+          is_active: t.is_active !== false,
+        }))
+      );
     } catch (e) {
       console.error("Error fetching profile", e);
     }
@@ -482,6 +505,94 @@ export default function App() {
       notify('Porcentajes editoriales guardados.');
     } catch (e) {
       notify(e.message || 'Error al guardar porcentajes');
+    }
+  };
+
+  const saveSearchThemes = async () => {
+    if (!profile) return;
+    const cleaned = (themeDrafts || [])
+      .map((t) => ({
+        ...t,
+        name: (t.name || '').trim(),
+        queries: Array.isArray(t.queries) ? t.queries.filter(Boolean) : [],
+      }))
+      .filter((t) => t.name);
+    if (!cleaned.length) {
+      notify('Agrega al menos un tema con nombre.');
+      return;
+    }
+    try {
+      const data = normalizeProfile(
+        await api('/profile/search-themes', {
+          method: 'PUT',
+          body: JSON.stringify({ themes: cleaned }),
+        })
+      );
+      setProfile(data);
+      setThemeDrafts(
+        (data?.search_themes || []).map((t) => ({
+          ...t,
+          queries: Array.isArray(t.queries) ? t.queries : [],
+          is_active: t.is_active !== false,
+        }))
+      );
+      notify('Temas de búsqueda guardados. La patrulla usará estas queries.');
+    } catch (e) {
+      notify(e.message || 'Error al guardar temas de búsqueda');
+    }
+  };
+
+  const resetSearchThemes = async () => {
+    if (!window.confirm('¿Restaurar las 11 tipologías del PDF de Juan Vásquez? Se perderán temas custom.')) {
+      return;
+    }
+    try {
+      const data = normalizeProfile(
+        await api('/profile/search-themes', {
+          method: 'PUT',
+          body: JSON.stringify({ themes: [], reset_to_defaults: true }),
+        })
+      );
+      setProfile(data);
+      setThemeDrafts(
+        (data?.search_themes || []).map((t) => ({
+          ...t,
+          queries: Array.isArray(t.queries) ? t.queries : [],
+          is_active: t.is_active !== false,
+        }))
+      );
+      notify('Tipologías del PDF restauradas.');
+    } catch (e) {
+      notify(e.message || 'Error al restaurar tipologías');
+    }
+  };
+
+  const applyPdfPillarMix = async () => {
+    if (!window.confirm('¿Aplicar el mix editorial del PDF (30/25/20/15/10)? Se actualizarán nombres y metas de pilares.')) {
+      return;
+    }
+    try {
+      const data = normalizeProfile(
+        await api('/profile/pillars/rebalance', { method: 'POST' })
+      );
+      setProfile(data);
+      const drafts = {};
+      for (const p of data?.pillars || []) drafts[p.slug] = p.target_percentage;
+      setPillarDrafts(drafts);
+      await fetchQuotaSuggestions();
+      notify('Mix editorial PDF aplicado (Legal Tech–IA 30%, Compliance 25%, PI 20%, MX–US 15%, Inversión 10%).');
+    } catch (e) {
+      notify(e.message || 'Error al aplicar mix PDF');
+    }
+  };
+
+  const fetchQuotaSuggestions = async () => {
+    try {
+      const data = await api('/profile/quota-suggestions?limit=5');
+      setQuotaSuggestions(data?.suggestions || []);
+    } catch (e) {
+      console.error('Error fetching quota suggestions', e);
+      setQuotaSuggestions([]);
     }
   };
 
@@ -680,14 +791,16 @@ export default function App() {
   const fetchTop10 = async () => {
     setLoading(true);
     try {
-      const data = normalizeTop10(await api('/top10'));
-      setTop10(data);
+      const data = normalizeTop10(await api('/top10?days=60&limit=10'));
+      setTop10(Array.isArray(data) ? data : []);
       // Solo seleccionar #1; NO auto-generar LinkedIn (eso repetía siempre el mismo post)
       if (data.length > 0 && !selectedArticleForApproval) {
         setSelectedArticleForApproval(data[0]);
       }
     } catch (e) {
       console.error("Error fetching Top 10", e);
+      notify(e.message || 'No se pudo cargar el Top 10', 'error');
+      setTop10([]);
     } finally {
       setLoading(false);
     }
@@ -1046,7 +1159,7 @@ export default function App() {
       setMultiFormatError('');
       await fetchArticles();
       notify(`Artículo ${articleId} rechazado.`, 'success');
-      setActiveTab('top10');
+      setActiveTab('hoy');
     } catch (error) {
       notify(error.message || 'No se pudo rechazar el artículo', 'error');
     }
@@ -1508,24 +1621,13 @@ export default function App() {
       >
         {activeTab === 'hoy' && (
           <HoyTab
-            steps={PILOT_STEPS}
-            progress={pilotProgress}
-            doneCount={pilotDoneCount}
-            nextStep={nextPilotStep}
-            onGo={goToTab}
-          />
-        )}
-
-        {activeTab === 'top10' && (
-          <Top10Tab
+            deficitPillars={profile?.deficit_pillars || []}
             top10={top10}
-            loading={loading}
-            isSearching={isSearching}
-            onRecalculate={fetchTop10}
+            onUseSuggestion={useArticleInFlow}
+            onRefreshTop10={fetchTop10}
             onPatrol={runAgenticSearch}
-            onNotify={notify}
-            onDerive={useArticleInFlow}
-            goToTab={goToTab}
+            loadingTop10={loading}
+            isSearching={isSearching}
           />
         )}
 
@@ -1560,9 +1662,6 @@ export default function App() {
           />
         )}
 
-        {/* TAB 8: CALENDARIO, TAREAS & SEMÁFORO DE RIESGO (FASE 4) */}
-        {activeTab === 'refresh' && <RefreshTab notify={notify} />}
-
         {activeTab === 'multiformat' && (
           <MultiFormatTab
             selectedArticleForApproval={selectedArticleForApproval}
@@ -1594,6 +1693,11 @@ export default function App() {
             pillarDrafts={pillarDrafts}
             setPillarDrafts={setPillarDrafts}
             saveProfilePercentages={saveProfilePercentages}
+            themeDrafts={themeDrafts}
+            setThemeDrafts={setThemeDrafts}
+            saveSearchThemes={saveSearchThemes}
+            resetSearchThemes={resetSearchThemes}
+            applyPdfPillarMix={applyPdfPillarMix}
           />
         )}
 
