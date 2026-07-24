@@ -2,11 +2,9 @@ import React, { useEffect, useState } from 'react';
 import {
   Activity,
   BookOpen,
-  Building2,
   ChevronDown,
   ChevronRight,
   Cpu,
-  FileText,
   Home,
   LogOut,
   Megaphone,
@@ -37,9 +35,7 @@ const NAV_GROUPS = [
     title: 'Configuración',
     items: [
       ['profile', 'Perfil', User],
-      ['multiempresa', 'Organización', Building2],
       ['aigateway', 'Inteligencia Artificial', Cpu],
-      ['report', 'Reportes', FileText],
     ],
   }
 ];

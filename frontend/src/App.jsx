@@ -80,7 +80,7 @@ export default function App() {
 
   useEffect(() => {
     // Pestañas ocultas: si el estado quedó ahí, vuelve a Hoy
-    if (['refresh', 'legalseo', 'agents', 'approval', 'metrics', 'top10'].includes(activeTab)) {
+    if (['refresh', 'legalseo', 'agents', 'approval', 'metrics', 'top10', 'report', 'multiempresa'].includes(activeTab)) {
       setActiveTab(activeTab === 'agents' ? 'aigateway' : 'hoy');
     }
   }, [activeTab]);
@@ -332,6 +332,8 @@ export default function App() {
     if (tab === 'agents') tab = 'aigateway';
     if (tab === 'refresh') tab = 'hoy';
     if (tab === 'top10') tab = 'hoy';
+    if (tab === 'report') tab = 'hoy';
+    if (tab === 'multiempresa') tab = 'hoy';
     setActiveTab(tab);
     if (tab === 'aigateway') {
       fetchAiStats();
