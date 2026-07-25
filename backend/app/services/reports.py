@@ -117,8 +117,16 @@ def create_blog_draft_from_article(
     import html
     import re
 
-    if article.status not in ("verified", "approved", "published"):
-        raise ValueError("Only verified articles can become blog drafts")
+    if article.status not in (
+        "collected",
+        "classified",
+        "verified",
+        "approved",
+        "published",
+    ):
+        raise ValueError(
+            f"No se puede crear borrador de blog desde status '{article.status}'"
+        )
 
     org_id = organization_id or article.organization_id
 

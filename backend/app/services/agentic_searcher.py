@@ -273,12 +273,14 @@ class AgenticSearcherService:
                                     "news_type_id": typo["id"],
                                     "news_type_slug": slug,
                                     "news_type_name": typo["name"],
+                                    "pillar_slug": typo.get("pillar_slug"),
                                     "relevance_score": relevance,
                                     "reason": eval_data.get("reason"),
                                     "editorial_fit": eval_data.get("editorial_fit"),
                                     "four_questions_ok": eval_data.get("four_questions_ok"),
                                     "query": query,
-                                }
+                                },
+                                "pillar_slug": typo.get("pillar_slug"),
                             },
                             score_relevance=relevance,
                         )

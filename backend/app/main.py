@@ -5,6 +5,8 @@ import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 from app.api.agent_routes import router as agent_router
 from app.api.ai_routes import router as ai_router
@@ -125,6 +127,11 @@ app.include_router(marketing_router)
 app.include_router(saas_router)
 app.include_router(public_router)
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
+
+# Creatividades generadas (PNG) — desarrollo / piloto local
+_media_dir = Path(__file__).resolve().parent.parent / "media"
+_media_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=str(_media_dir)), name="media")
 
 
 @app.get("/")

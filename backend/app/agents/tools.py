@@ -153,6 +153,29 @@ def tool_review_package(db: Session, *, package_id: int) -> dict[str, Any]:
     return {"package_id": package_id, "reviews": outcomes}
 
 
+def tool_trend_ad_notes(
+    db: Session,
+    *,
+    slug: str = "juan-vasquez",
+    max_queries: int = 12,
+) -> dict[str, Any]:
+    from app.services.trend_ad_advisor import generate_ad_trend_notes
+
+    org_id = db.info.get("organization_id")
+    notes = generate_ad_trend_notes(
+        db,
+        organization_id=org_id,
+        slug=slug,
+        max_queries=max(4, min(int(max_queries or 12), 20)),
+        persist=True,
+    )
+    return {
+        "notes": notes,
+        "trends_count": len(notes.get("trends") or []),
+        "hits_count": (notes.get("meta") or {}).get("hits_count"),
+    }
+
+
 # --- Esquemas Pydantic (args de StructuredTool) ---
 
 
@@ -179,6 +202,11 @@ class WritePackageInput(BaseModel):
 
 class ReviewPackageInput(BaseModel):
     package_id: int = Field(..., ge=1)
+
+
+class TrendAdNotesInput(BaseModel):
+    slug: str = Field(default="juan-vasquez")
+    max_queries: int = Field(default=12, ge=4, le=20)
 
 
 TOOL_META: dict[str, dict[str, Any]] = {
@@ -211,6 +239,14 @@ TOOL_META: dict[str, dict[str, Any]] = {
         "description": "Aplica revisores factual y de marca a todas las piezas de un paquete",
         "args_schema": ReviewPackageInput,
         "fn": tool_review_package,
+    },
+    "trend_ad_notes": {
+        "description": (
+            "Investiga tendencias en LinkedIn/YouTube/X/TikTok/Instagram "
+            "según temas del perfil y genera notas de CTA orgánico por red"
+        ),
+        "args_schema": TrendAdNotesInput,
+        "fn": tool_trend_ad_notes,
     },
 }
 

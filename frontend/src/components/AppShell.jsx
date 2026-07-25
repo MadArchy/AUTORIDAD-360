@@ -1,16 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import {
   Activity,
-  BookOpen,
   ChevronDown,
   ChevronRight,
   Cpu,
   Home,
   LogOut,
-  Megaphone,
   Newspaper,
   RefreshCw,
-  Send,
   ShieldCheck,
   User,
 } from 'lucide-react';
@@ -21,14 +18,6 @@ const NAV_GROUPS = [
     items: [
       ['hoy', 'Hoy', Home],
       ['live', 'Noticias en vivo', Newspaper],
-    ],
-  },
-  {
-    title: 'Distribución',
-    items: [
-      ['publish', 'Publicar', Send],
-      ['blog', 'Blog', BookOpen],
-      ['marketing', 'Marketing', Megaphone],
     ],
   },
   {
@@ -44,7 +33,7 @@ const ALL_ITEMS = NAV_GROUPS.flatMap(g => g.items);
 
 const TITLES = {
   ...Object.fromEntries(ALL_ITEMS.map(([id, label]) => [id, label])),
-  multiformat: 'Generar Formatos',
+  multiformat: 'Estudio de contenido',
 };
 
 function NavButton({ id, label, Icon, active, onNavigate }) {

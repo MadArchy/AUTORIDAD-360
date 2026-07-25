@@ -280,6 +280,8 @@ export function normalizeCarouselSlides(carousel) {
       slide: Number(s?.slide) || i + 1,
       title,
       content,
+      image_url: s?.image_url || null,
+      media_asset_id: s?.media_asset_id || null,
     };
   });
 }

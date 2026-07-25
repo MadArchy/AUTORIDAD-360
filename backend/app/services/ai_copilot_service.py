@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
+
 from sqlalchemy.orm import Session
 
+from app.models.content import ContentPiece
 from app.models.editorial import NewsArticle, BlogPost
 from app.services.llm import _call_model
 from app.services.audit import log_audit
@@ -120,6 +123,84 @@ def refine_blog_post_content(
     return {
         "post_id": post.id,
         "target_field": target_field,
+        "original_content": current_text,
+        "refined_content": new_content,
+        "model_used": model_used,
+        "instruction": instruction,
+    }
+
+
+def refine_content_piece(
+    db: Session,
+    piece_id: int,
+    instruction: str,
+    *,
+    organization_id: int | None = None,
+    draft_text: str | None = None,
+    provider_mode: str = "auto",
+) -> dict[str, Any]:
+    """
+    Refina una pieza de formato (LinkedIn, carrusel, etc.).
+    Si se pasa draft_text, itera sobre el borrador del editor (sin persistir).
+    """
+    q = db.query(ContentPiece).filter(ContentPiece.id == piece_id)
+    if organization_id is not None:
+        q = q.filter(ContentPiece.organization_id == organization_id)
+    piece = q.first()
+    if not piece:
+        raise ValueError(f"Pieza con ID {piece_id} no encontrada")
+
+    if draft_text is not None and str(draft_text).strip():
+        current_text = str(draft_text)
+    elif piece.format_type == "carousel" and piece.body_json:
+        current_text = json.dumps(piece.body_json, ensure_ascii=False, indent=2)
+    else:
+        current_text = piece.body_text or ""
+
+    format_hint = {
+        "linkedin": "post profesional para LinkedIn",
+        "video_script": "guion de video / teleprompter",
+        "carousel": "carrusel (JSON de slides con title/content)",
+        "newsletter": "edición de newsletter",
+    }.get(piece.format_type, piece.format_type)
+
+    prompt = f"""
+    Eres el Copiloto Editorial Senior de Autoridad 360.
+    Mejora la siguiente pieza de formato ({format_hint}) según la instrucción del usuario.
+
+    TÍTULO DE LA PIEZA: {piece.title}
+    FORMATO: {piece.format_type}
+    CONTENIDO ACTUAL:
+    ---
+    {current_text}
+    ---
+
+    INSTRUCCIÓN DEL USUARIO:
+    "{instruction}"
+
+    Reglas:
+    1. Devuelve SOLO el contenido actualizado listo para pegar (sin preámbulos).
+    2. Si el formato es carrusel y el input es JSON, responde con JSON válido de slides.
+    3. Mantén hechos y tono profesional autoritativo; sin hype vacío.
+    4. Idioma: el mismo del contenido original salvo que la instrucción pida otro.
+    """
+
+    new_content, model_used = _call_model(
+        db, "agent_critique", prompt, provider_mode=provider_mode
+    )
+
+    log_audit(
+        db,
+        entity_type="content_piece",
+        entity_id=piece.id,
+        action="copilot_refine_piece",
+        actor="user_copilot",
+        output_summary=f"Refinado {piece.format_type}: {instruction[:60]}",
+    )
+
+    return {
+        "piece_id": piece.id,
+        "format_type": piece.format_type,
         "original_content": current_text,
         "refined_content": new_content,
         "model_used": model_used,

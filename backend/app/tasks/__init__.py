@@ -52,6 +52,7 @@ celery_app.conf.update(
         # Misma cola llm que el worker editorial (-Q editorial,llm)
         "app.tasks.generate_content_package_task": {"queue": "llm"},
         "app.tasks.generate_blog_draft_task": {"queue": "llm"},
+        "app.tasks.generate_trend_ad_notes_task": {"queue": "llm"},
     },
     beat_schedule={
         "collect-rss-every-6-hours": {
@@ -278,6 +279,41 @@ def generate_blog_draft_task(
                 "post_id": post.id,
                 "article_id": article_id,
                 "status": post.status,
+            }
+        finally:
+            db.close()
+
+    return _run_tracked(job_id, self, work)
+
+
+@celery_app.task(bind=True, name="app.tasks.generate_trend_ad_notes_task", max_retries=1)
+def generate_trend_ad_notes_task(
+    self,
+    organization_id: int | None = None,
+    slug: str = "juan-vasquez",
+    max_queries: int = 12,
+    job_id: int | None = None,
+):
+    def work():
+        from app.models import SessionLocal
+        from app.services.trend_ad_advisor import generate_ad_trend_notes
+
+        db = SessionLocal()
+        try:
+            if organization_id is not None:
+                db.info["organization_id"] = organization_id
+            notes = generate_ad_trend_notes(
+                db,
+                organization_id=organization_id,
+                slug=slug,
+                max_queries=max_queries,
+                persist=True,
+            )
+            return {
+                "ok": True,
+                "generated_at": notes.get("generated_at"),
+                "trends_count": len(notes.get("trends") or []),
+                "hits_count": (notes.get("meta") or {}).get("hits_count"),
             }
         finally:
             db.close()

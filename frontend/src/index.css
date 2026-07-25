@@ -74,6 +74,13 @@ textarea:focus-visible {
   border-color: #39414e;
 }
 
+/* Options nativas: en Windows el color del <select> se hereda y quedan ilegibles */
+select option,
+select optgroup {
+  color: #111827;
+  background-color: #ffffff;
+}
+
 /* Layout */
 .app-container {
   max-width: 1400px;

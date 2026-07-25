@@ -29,6 +29,8 @@ WEIGHTS = {
 }
 
 RANKABLE_STATUSES = ("verified", "classified", "collected")
+# Tope de candidatos a rankear (evita escanear todo el historial)
+TOP10_CANDIDATE_CAP = 200
 
 
 @dataclass
@@ -112,14 +114,30 @@ def score_verified_articles(db: Session, organization_id: int | None = None) -> 
     return len(articles)
 
 
-def score_rankable_articles(db: Session, organization_id: int | None = None) -> int:
+def score_rankable_articles(
+    db: Session,
+    organization_id: int | None = None,
+    *,
+    persist: bool = True,
+    days: int | None = None,
+    candidate_cap: int = TOP10_CANDIDATE_CAP,
+) -> int:
+    """Score candidatos rankeables. persist=False evita commit masivo (path /top10)."""
     query = db.query(NewsArticle).filter(NewsArticle.status.in_(RANKABLE_STATUSES))
     if organization_id is not None:
         query = query.filter(NewsArticle.organization_id == organization_id)
-    articles = query.all()
+    if days is not None:
+        cutoff = datetime.utcnow() - timedelta(days=max(1, days))
+        query = query.filter(NewsArticle.created_at >= cutoff)
+    articles = (
+        query.order_by(NewsArticle.created_at.desc())
+        .limit(max(1, int(candidate_cap)))
+        .all()
+    )
     for article in articles:
         compute_total_score(article)
-    db.commit()
+    if persist:
+        db.commit()
     return len(articles)
 
 
@@ -128,9 +146,18 @@ def get_top10(
     days: int = 30,
     organization_id: int | None = None,
     limit: int = 10,
+    *,
+    persist: bool = False,
+    candidate_cap: int = TOP10_CANDIDATE_CAP,
 ) -> list[ScoredArticle]:
-    """Top noticias del perfil: verified + collected rankeadas por pilares/cuota."""
-    score_rankable_articles(db, organization_id=organization_id)
+    """Top noticias del perfil. Por defecto no persiste scores (rápido)."""
+    score_rankable_articles(
+        db,
+        organization_id=organization_id,
+        persist=persist,
+        days=days,
+        candidate_cap=candidate_cap,
+    )
     cutoff = datetime.utcnow() - timedelta(days=max(1, days))
     filters = [
         NewsArticle.status.in_(RANKABLE_STATUSES),
@@ -138,7 +165,13 @@ def get_top10(
     ]
     if organization_id is not None:
         filters.append(NewsArticle.organization_id == organization_id)
-    articles = db.query(NewsArticle).filter(*filters).all()
+    articles = (
+        db.query(NewsArticle)
+        .filter(*filters)
+        .order_by(NewsArticle.created_at.desc())
+        .limit(max(1, int(candidate_cap)))
+        .all()
+    )
 
     profile = get_active_profile(db, organization_id=organization_id)
     boosts: dict[str, float] = {}
@@ -162,7 +195,6 @@ def get_top10(
         )
         if mult < 0.45:
             continue
-        # Primer pass para detectar pilar y armar score heurístico
         _, _, matched_pre = apply_quota_boost(article, 50.0, boosts, pillars)
         base = _heuristic_profile_score(article, matched_pre)
         adjusted, boost, matched = apply_quota_boost(article, base, boosts, pillars)

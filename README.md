@@ -20,7 +20,20 @@ docker compose up -d --build
 cd frontend && npm install && npm run dev
 ```
 
+**Piloto local:** no enlaces el API/admin a la LAN; usa `127.0.0.1`. `POST /api/v1/orgs/seed` exige JWT + rol `agency_admin`.
+
 Métricas: http://localhost:3000/metricas · Docs: http://localhost:8000/docs
+
+### Mix editorial (Perfil)
+
+```bash
+# Pendiente o generar (requiere >= 3 leads calificados)
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://127.0.0.1:8012/api/v1/profile/percentage-recommendations?generate=true"
+
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  "http://127.0.0.1:8012/api/v1/profile/percentage-recommendations/1/accept"
+```
 
 ### Fase 7 — flujo
 

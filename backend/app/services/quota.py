@@ -35,17 +35,18 @@ JUAN_PILLAR_DEFS: list[tuple[str, str, str, list[str], float]] = [
         "Legal Tech, IA y gobernanza",
         "Implementación de IA, legal tech, empleo y gobernanza tecnológica (núcleo del PDF).",
         [
-            "ia",
-            "inteligencia artificial",
             "legal tech",
-            "gobernanza",
-            "chatbot",
-            "piloto",
-            "automatización",
-            "empleo",
-            "recursos humanos",
-            "abogados",
-            "citación",
+            "gobernanza de ia",
+            "gobernanza inteligencia artificial",
+            "piloto inteligencia artificial",
+            "chatbot empresarial",
+            "adopción de ia",
+            "automatización laboral",
+            "selección algorítmica",
+            "herramienta legal",
+            "privilegio abogado",
+            "error de citación",
+            "inteligencia artificial para abogados",
         ],
         30.0,
     ),
@@ -54,18 +55,19 @@ JUAN_PILLAR_DEFS: list[tuple[str, str, str, list[str], float]] = [
         "Regulación, riesgo y compliance IA",
         "Leyes, sanciones, privacidad y responsabilidad empresarial por uso de IA.",
         [
-            "regulación",
-            "compliance",
-            "ley",
-            "demanda",
-            "sanción",
-            "ftc",
-            "privacidad",
-            "ciberseguridad",
+            "regulación inteligencia artificial",
+            "ley inteligencia artificial",
+            "compliance ia",
+            "responsabilidad por ia",
+            "demanda inteligencia artificial",
+            "sanción ftc",
+            "privacidad de datos",
+            "ciberseguridad ia",
             "gdpr",
             "datos personales",
-            "responsabilidad",
-            "litigio",
+            "litigio inteligencia artificial",
+            "executive order ai",
+            "ai act",
         ],
         25.0,
     ),
@@ -75,15 +77,16 @@ JUAN_PILLAR_DEFS: list[tuple[str, str, str, list[str], float]] = [
         "Patentes, inventorship, copyright, secretos y titularidad de resultados de IA.",
         [
             "propiedad intelectual",
-            "patente",
-            "inventor",
+            "patente inteligencia artificial",
             "inventorship",
-            "copyright",
+            "inventor ia",
+            "copyright ia",
             "secreto empresarial",
-            "marca",
-            "licencia",
-            "wipo",
+            "marca registrada",
+            "licencia de ia",
             "uspto",
+            "wipo",
+            "titularidad de resultados",
         ],
         20.0,
     ),
@@ -92,16 +95,16 @@ JUAN_PILLAR_DEFS: list[tuple[str, str, str, list[str], float]] = [
         "México–EE.UU. (IA y operaciones)",
         "Operación binacional, datos cross-border, nearshoring tech y cumplimiento MX–US.",
         [
-            "méxico",
-            "estados unidos",
+            "méxico estados unidos",
             "mx-us",
             "cross-border",
-            "nearshoring",
             "datos transfronterizos",
+            "nearshoring",
             "t-mec",
             "usmca",
-            "comercio",
             "binacional",
+            "comercio mx",
+            "nearshoring tech",
         ],
         15.0,
     ),
@@ -110,15 +113,15 @@ JUAN_PILLAR_DEFS: list[tuple[str, str, str, list[str], float]] = [
         "Inversión y negocios en IA",
         "Fondos, M&A, data centers, presupuestos corporativos y expansión en IA.",
         [
-            "inversión",
-            "startup",
-            "fondo",
-            "adquisición",
+            "inversión en ia",
+            "fondo inteligencia artificial",
+            "adquisición ia",
             "data center",
-            "presupuesto",
-            "venture",
-            "alianza",
-            "m&a",
+            "presupuesto corporativo ia",
+            "venture capital ia",
+            "startup ia",
+            "m&a inteligencia artificial",
+            "alianza tecnológica",
         ],
         10.0,
     ),
@@ -184,28 +187,85 @@ def get_active_profile(
     )
 
 
+def _article_haystack(article: NewsArticle) -> str:
+    data = article.classification_json or {}
+    scout = data.get("scout") if isinstance(data.get("scout"), dict) else {}
+    article_pillars = _article_pillars(article)
+    return " ".join(
+        [
+            article.title or "",
+            article.summary or "",
+            article.excerpt or "",
+            " ".join(article_pillars),
+            (article.category.name if article.category else ""),
+            str(scout.get("news_type_slug") or ""),
+            str(scout.get("news_type_name") or ""),
+            str(data.get("pillar_slug") or ""),
+        ]
+    ).lower()
+
+
+def _pillar_match_score(article: NewsArticle, pillar: ContentPillar) -> float:
+    """Puntaje de afinidad: tipología/slug explícito > keywords largas > hits cortos."""
+    haystack = _article_haystack(article)
+    article_pillars = _article_pillars(article)
+    slug = pillar.slug.lower()
+    name = pillar.name.lower()
+    score = 0.0
+
+    # Tipología scout → pillar_slug guardado en classification
+    data = article.classification_json or {}
+    scout = data.get("scout") if isinstance(data.get("scout"), dict) else {}
+    explicit = str(data.get("pillar_slug") or scout.get("pillar_slug") or "").lower()
+    if explicit and explicit == slug:
+        score += 100.0
+
+    if slug in article_pillars or name in article_pillars:
+        score += 40.0
+
+    keywords = [str(k).lower().strip() for k in (pillar.keywords_json or []) if str(k).strip()]
+    # Preferir keywords más largas / específicas
+    keywords_sorted = sorted(keywords, key=len, reverse=True)
+    for kw in keywords_sorted:
+        if len(kw) < 3:
+            continue
+        if kw in haystack:
+            score += 5.0 + min(len(kw), 40) * 0.35
+    return score
+
+
+def _match_pillar(article: NewsArticle, pillar: ContentPillar) -> bool:
+    return _pillar_match_score(article, pillar) >= 5.0
+
+
+def match_best_pillar(
+    article: NewsArticle,
+    pillars: list[ContentPillar],
+    boosts: dict[str, float] | None = None,
+) -> tuple[str | None, float]:
+    """Mejor pilar por score de keywords/tipología; desempate por boost de cuota."""
+    boosts = boosts or {}
+    best_slug: str | None = None
+    best_key = -1.0
+    best_boost = 1.0
+    for pillar in pillars:
+        affinity = _pillar_match_score(article, pillar)
+        if affinity < 5.0:
+            continue
+        b = float(boosts.get(pillar.slug.lower(), 1.0))
+        # Afinidad manda; boost de déficit desempata
+        key = affinity + b * 10.0
+        if key > best_key:
+            best_key = key
+            best_slug = pillar.slug
+            best_boost = b
+    return best_slug, best_boost
+
+
 def _article_pillars(article: NewsArticle) -> list[str]:
     data = article.classification_json or {}
     raw = data.get("pillars") or []
     return [str(p).strip().lower() for p in raw if str(p).strip()]
-
-
-def _match_pillar(article: NewsArticle, pillar: ContentPillar) -> bool:
-    article_pillars = _article_pillars(article)
-    slug = pillar.slug.lower()
-    name = pillar.name.lower()
-    if slug in article_pillars or name in article_pillars:
-        return True
-    keywords = [str(k).lower() for k in (pillar.keywords_json or [])]
-    haystack = " ".join(
-        [
-            article.title or "",
-            article.summary or "",
-            " ".join(article_pillars),
-            (article.category.name if article.category else ""),
-        ]
-    ).lower()
-    return any(k in haystack for k in keywords if k)
 
 
 def compute_quota_snapshot(db: Session, profile: ProfessionalProfile) -> QuotaSnapshot:
@@ -279,27 +339,6 @@ def pillar_boost_map(snapshot: QuotaSnapshot) -> dict[str, float]:
         multiplier = 1.0 + (p.deficit_pct / 100.0) * QUOTA_BOOST_FACTOR
         boosts[p.pillar_slug.lower()] = round(multiplier, 4)
     return boosts
-
-
-def match_best_pillar(
-    article: NewsArticle,
-    pillars: list[ContentPillar],
-    boosts: dict[str, float] | None = None,
-) -> tuple[str | None, float]:
-    """Mejor pilar que matchea el artículo (prioriza mayor boost / déficit)."""
-    boosts = boosts or {}
-    best_slug: str | None = None
-    best_boost = 0.0
-    for pillar in pillars:
-        if not _match_pillar(article, pillar):
-            continue
-        b = float(boosts.get(pillar.slug.lower(), 1.0))
-        # Preferir déficit; si empatan, cualquier match cuenta
-        score = b + 0.01  # tip: match > no match
-        if score > best_boost:
-            best_boost = score
-            best_slug = pillar.slug
-    return best_slug, (boosts.get(best_slug.lower(), 1.0) if best_slug else 1.0)
 
 
 def apply_quota_boost(

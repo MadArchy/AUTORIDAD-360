@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, RotateCcw, Search, Sliders, Trash2 } from 'lucide-react';
+import { CheckCircle2, Plus, RotateCcw, Search, Sliders, Sparkles, Trash2, XCircle } from 'lucide-react';
 
 export default function ProfileTab({
   profile,
@@ -11,8 +11,16 @@ export default function ProfileTab({
   saveSearchThemes,
   resetSearchThemes,
   applyPdfPillarMix,
+  pctRecommendation = null,
+  pctRecMessage = null,
+  pctRecLoading = false,
+  onLoadPctRecommendation,
+  onGeneratePctRecommendation,
+  onAcceptPctRecommendation,
+  onRejectPctRecommendation,
 }) {
   const themes = themeDrafts || [];
+  const pillarOptions = profile?.pillars || [];
 
   const updateTheme = (index, patch) => {
     setThemeDrafts(themes.map((t, i) => (i === index ? { ...t, ...patch } : t)));
@@ -24,6 +32,7 @@ export default function ProfileTab({
 
   const addTheme = () => {
     const nextId = themes.length + 1;
+    const defaultPillar = pillarOptions[0]?.slug || '';
     setThemeDrafts([
       ...themes,
       {
@@ -34,6 +43,7 @@ export default function ProfileTab({
         why: '',
         editorial_angle: '',
         queries: [],
+        pillar_slug: defaultPillar,
         is_active: true,
       },
     ]);
@@ -102,6 +112,19 @@ export default function ProfileTab({
                       onChange={(e) => updateTheme(index, { slug: e.target.value })}
                       style={{ width: '100%', marginTop: '4px', padding: '8px 10px', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', color: '#FFF', border: '1px solid rgba(255,255,255,0.2)' }}
                     />
+                  </div>
+                  <div style={{ width: '200px' }}>
+                    <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Pilar editorial</label>
+                    <select
+                      value={theme.pillar_slug || ''}
+                      onChange={(e) => updateTheme(index, { pillar_slug: e.target.value || null })}
+                      style={{ width: '100%', marginTop: '4px', padding: '8px 10px', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', color: '#FFF', border: '1px solid rgba(255,255,255,0.2)' }}
+                    >
+                      <option value="">Sin pilar fijo</option>
+                      {pillarOptions.map((p) => (
+                        <option key={p.slug} value={p.slug}>{p.name}</option>
+                      ))}
+                    </select>
                   </div>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', marginTop: '18px' }}>
                     <input
@@ -200,23 +223,14 @@ export default function ProfileTab({
                     <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{p.description}</p>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>ESTADO DE CUOTA</span>
-                      <span className={`status-badge ${p.quota_status === 'below_quota' ? 'status-pending' : 'status-verified'}`}>
-                        {p.quota_status === 'below_quota' ? `Bajo Meta (Boost x${p.quota_boost})` : 'Balanceado'}
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Meta %:</span>
-                      <input
-                        type="number"
-                        value={pillarDrafts[p.slug] ?? p.target_percentage}
-                        onChange={(e) => setPillarDrafts({ ...pillarDrafts, [p.slug]: Number(e.target.value) })}
-                        style={{ width: '65px', padding: '6px', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', color: '#FFF', border: '1px solid rgba(255,255,255,0.2)', textAlign: 'center', fontWeight: 700 }}
-                      />
-                    </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Meta %:</span>
+                    <input
+                      type="number"
+                      value={pillarDrafts[p.slug] ?? p.target_percentage}
+                      onChange={(e) => setPillarDrafts({ ...pillarDrafts, [p.slug]: Number(e.target.value) })}
+                      style={{ width: '65px', padding: '6px', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', color: '#FFF', border: '1px solid rgba(255,255,255,0.2)', textAlign: 'center', fontWeight: 700 }}
+                    />
                   </div>
                 </div>
 
@@ -224,7 +238,7 @@ export default function ProfileTab({
                   <div
                     style={{
                       width: `${Math.min(p.current_month_pct, 100)}%`,
-                      background: p.quota_status === 'below_quota' ? 'linear-gradient(90deg, #F59E0B, #10B981)' : 'linear-gradient(90deg, #3B82F6, #8B5CF6)',
+                      background: 'linear-gradient(90deg, #3B82F6, #8B5CF6)',
                       height: '100%',
                       borderRadius: '5px',
                       transition: 'width 0.4s ease'
@@ -264,6 +278,69 @@ export default function ProfileTab({
               </button>
             )}
           </div>
+
+          <h3 style={{ fontSize: '1.2rem', fontWeight: 800, margin: '32px 0 8px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Sparkles size={20} style={{ color: 'var(--accent-cyan)' }} /> Sugerencia de mix (leads)
+          </h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginBottom: '14px', maxWidth: '820px' }}>
+            Propuesta basada solo en leads calificados (≥3). Debes aprobarla para cambiar las metas; no hay auto-ajuste.
+          </p>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '14px' }}>
+            <button type="button" className="btn" disabled={pctRecLoading} onClick={onLoadPctRecommendation}>
+              Ver pendiente
+            </button>
+            <button type="button" className="btn btn-secondary" disabled={pctRecLoading} onClick={onGeneratePctRecommendation}>
+              <Sparkles size={16} style={{ marginRight: 6 }} />
+              {pctRecLoading ? 'Calculando…' : 'Generar sugerencia'}
+            </button>
+          </div>
+          {pctRecMessage && (
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '12px' }}>{pctRecMessage}</p>
+          )}
+          {pctRecommendation && (
+            <div className="glass-card" style={{ padding: '18px', borderLeft: '4px solid var(--accent-cyan)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                <div>
+                  <strong>Sugerencia #{pctRecommendation.id}</strong>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 4 }}>
+                    {pctRecommendation.min_qualified_leads != null
+                      ? `${pctRecommendation.min_qualified_leads} leads calificados`
+                      : ''}
+                    {pctRecommendation.status ? ` · ${pctRecommendation.status}` : ''}
+                  </p>
+                </div>
+              </div>
+              {pctRecommendation.rationale && (
+                <p style={{ fontSize: '0.9rem', marginBottom: '12px', lineHeight: 1.45 }}>{pctRecommendation.rationale}</p>
+              )}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
+                {(pctRecommendation.changes || []).map((ch, i) => (
+                  <span
+                    key={`${ch.pillar_slug}-${i}`}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      background: 'rgba(0,0,0,0.35)',
+                      fontSize: '0.85rem',
+                    }}
+                  >
+                    <strong>{ch.pillar_name || ch.pillar_slug}</strong>
+                    {' '}{ch.from_pct}% → {ch.to_pct}%
+                  </span>
+                ))}
+              </div>
+              {pctRecommendation.status === 'pending' && (
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <button type="button" className="btn btn-primary" disabled={pctRecLoading} onClick={() => onAcceptPctRecommendation?.(pctRecommendation.id)}>
+                    <CheckCircle2 size={16} style={{ marginRight: 6 }} /> Aprobar
+                  </button>
+                  <button type="button" className="btn" disabled={pctRecLoading} onClick={() => onRejectPctRecommendation?.(pctRecommendation.id)}>
+                    <XCircle size={16} style={{ marginRight: 6 }} /> Rechazar
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </section>
       )}
     </>

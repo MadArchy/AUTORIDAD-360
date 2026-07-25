@@ -63,9 +63,6 @@ import AIHubTab from './tabs/AIHubTab';
 import LiveNewsTab from './tabs/LiveNewsTab';
 import MultiFormatTab from './tabs/MultiFormatTab';
 import ProfileTab from './tabs/ProfileTab';
-import BlogTab from './tabs/BlogTab';
-import PublishTab from './tabs/PublishTab';
-import MarketingTab from './tabs/MarketingTab';
 import ReportTab from './tabs/ReportTab';
 import MultiEmpresaTab from './tabs/MultiEmpresaTab';
 import MetricsTab from './tabs/MetricsTab';
@@ -140,19 +137,25 @@ export default function App() {
   });
   const [leadFilter, setLeadFilter] = useState('');
   const [newProvider, setNewProvider] = useState({
-    name: '',
+    name: 'OpenAI',
     provider_type: 'openai',
-    model_name: '',
+    model_name: 'gpt-4o',
     api_key: '',
-    base_url: '',
+    base_url: 'https://api.openai.com/v1',
     monthly_budget_usd: '',
-    priority: 50,
+    priority: 20,
   });
   const [pendingBlogPosts, setPendingBlogPosts] = useState([]);
   const [publishedBlogPosts, setPublishedBlogPosts] = useState([]);
+  const [editorialBlogPosts, setEditorialBlogPosts] = useState([]);
   const [pillarDrafts, setPillarDrafts] = useState({});
   const [themeDrafts, setThemeDrafts] = useState([]);
-  const [quotaSuggestions, setQuotaSuggestions] = useState([]);
+  const [pctRecommendation, setPctRecommendation] = useState(null);
+  const [pctRecMessage, setPctRecMessage] = useState(null);
+  const [pctRecLoading, setPctRecLoading] = useState(false);
+  const [adTrendNotes, setAdTrendNotes] = useState(null);
+  const [adTrendMessage, setAdTrendMessage] = useState(null);
+  const [adTrendBusy, setAdTrendBusy] = useState(false);
   const [multiFormatError, setMultiFormatError] = useState('');
   const [reportError, setReportError] = useState('');
   const [contentPackages, setContentPackages] = useState([]);
@@ -269,7 +272,7 @@ export default function App() {
     fetchTop10();
     fetchArticles();
     fetchProfile();
-    fetchQuotaSuggestions();
+    fetchAdTrendNotes();
     refreshPilotSources();
   }, [authUser]);
 
@@ -328,6 +331,8 @@ export default function App() {
 
   const goToTab = (tab) => {
     if (tab === 'approval') tab = 'multiformat';
+    if (tab === 'publish' || tab === 'blog') tab = 'multiformat';
+    if (tab === 'marketing') tab = 'hoy';
     if (tab === 'legalseo') tab = 'hoy';
     if (tab === 'agents') tab = 'aigateway';
     if (tab === 'refresh') tab = 'hoy';
@@ -339,22 +344,26 @@ export default function App() {
       fetchAiStats();
       fetchAgentsCatalog();
     }
-    if (tab === 'profile') fetchProfile();
+    if (tab === 'profile') {
+      fetchProfile();
+      fetchPctRecommendation(false);
+    }
     if (tab === 'hoy') {
       fetchProfile();
-      fetchQuotaSuggestions();
       fetchTop10();
+      fetchAdTrendNotes();
     }
     if (tab === 'report') fetchReport();
     if (tab === 'multiempresa') fetchOrgData();
     if (tab === 'metrics') fetchMetricsData();
-    if (tab === 'blog' || tab === 'publish') {
+    if (tab === 'multiformat') {
       fetchPendingBlogs();
       fetchPublishedBlogs();
+      fetchEditorialBlogs(selectedArticleForApproval?.id || null);
     }
     if (tab === 'live') fetchArticles();
-    if (['blog', 'metrics', 'multiformat', 'approval'].includes(tab)) {
-      if (tab === 'blog' || tab === 'metrics') refreshPilotSources();
+    if (['metrics', 'multiformat'].includes(tab)) {
+      refreshPilotSources();
     }
   };
 
@@ -383,6 +392,9 @@ export default function App() {
       url: art.source_url || art.url,
     });
     setActiveTab('multiformat');
+    fetchPendingBlogs();
+    fetchPublishedBlogs();
+    fetchEditorialBlogs(articleId);
     // La generación solo arranca cuando el usuario autoriza en Generar formatos
   };
 
@@ -433,10 +445,10 @@ export default function App() {
     },
     {
       id: 'publish',
-      label: 'Publicar',
-      tab: 'publish',
-      hint: 'Crea el paquete de canales y confirma',
-      cta: 'Ir a publicar',
+      label: 'Estudio / publicar',
+      tab: 'multiformat',
+      hint: 'Preview, chat IA, redes y blog en el Estudio',
+      cta: 'Abrir estudio',
     },
   ];
   const pilotDoneCount = PILOT_STEPS.filter((s) => pilotProgress[s.id]).length;
@@ -581,20 +593,86 @@ export default function App() {
       const drafts = {};
       for (const p of data?.pillars || []) drafts[p.slug] = p.target_percentage;
       setPillarDrafts(drafts);
-      await fetchQuotaSuggestions();
       notify('Mix editorial PDF aplicado (Legal Tech–IA 30%, Compliance 25%, PI 20%, MX–US 15%, Inversión 10%).');
     } catch (e) {
       notify(e.message || 'Error al aplicar mix PDF');
     }
   };
 
-  const fetchQuotaSuggestions = async () => {
+  const fetchPctRecommendation = async (generate = false) => {
+    setPctRecLoading(true);
     try {
-      const data = await api('/profile/quota-suggestions?limit=5');
-      setQuotaSuggestions(data?.suggestions || []);
+      const qs = generate ? '?generate=true&days=30' : '?generate=false&days=30';
+      const data = await api(`/profile/percentage-recommendations${qs}`);
+      setPctRecommendation(data?.recommendation || null);
+      setPctRecMessage(data?.message || null);
     } catch (e) {
-      console.error('Error fetching quota suggestions', e);
-      setQuotaSuggestions([]);
+      setPctRecommendation(null);
+      setPctRecMessage(e.message || 'No se pudo cargar la sugerencia de mix');
+    } finally {
+      setPctRecLoading(false);
+    }
+  };
+
+  const acceptPctRecommendation = async (recId) => {
+    if (!recId) return;
+    setPctRecLoading(true);
+    try {
+      const data = normalizeProfile(
+        await api(`/profile/percentage-recommendations/${recId}/accept`, { method: 'POST' })
+      );
+      setProfile(data);
+      const drafts = {};
+      for (const p of data?.pillars || []) drafts[p.slug] = p.target_percentage;
+      setPillarDrafts(drafts);
+      setPctRecommendation(null);
+      setPctRecMessage(null);
+      notify('Mix editorial actualizado. El boost de Hoy usará las nuevas metas.');
+      fetchTop10();
+    } catch (e) {
+      notify(e.message || 'No se pudo aprobar la sugerencia', 'error');
+    } finally {
+      setPctRecLoading(false);
+    }
+  };
+
+  const rejectPctRecommendation = async (recId) => {
+    if (!recId) return;
+    setPctRecLoading(true);
+    try {
+      await api(`/profile/percentage-recommendations/${recId}/reject`, { method: 'POST' });
+      setPctRecommendation(null);
+      setPctRecMessage('Sugerencia rechazada. Las metas no cambiaron.');
+      notify('Sugerencia de mix rechazada');
+    } catch (e) {
+      notify(e.message || 'No se pudo rechazar la sugerencia', 'error');
+    } finally {
+      setPctRecLoading(false);
+    }
+  };
+
+  const fetchAdTrendNotes = async () => {
+    try {
+      const data = await api('/profile/ad-trend-notes');
+      setAdTrendNotes(data?.notes || null);
+      setAdTrendMessage(data?.message || null);
+    } catch (e) {
+      setAdTrendNotes(null);
+      setAdTrendMessage(e.message || 'No se pudieron cargar las notas');
+    }
+  };
+
+  const generateAdTrendNotes = async () => {
+    setAdTrendBusy(true);
+    try {
+      const data = await api('/profile/ad-trend-notes/generate', { method: 'POST' });
+      setAdTrendNotes(data?.notes || null);
+      setAdTrendMessage(null);
+      notify('Notas de tendencias y publicidad actualizadas');
+    } catch (e) {
+      notify(e.message || 'No se pudieron generar las notas', 'error');
+    } finally {
+      setAdTrendBusy(false);
     }
   };
 
@@ -729,15 +807,21 @@ export default function App() {
   };
 
   const createAiProvider = async () => {
-    if (!newProvider.name || !newProvider.model_name) {
-      return notify('Nombre y modelo son requeridos');
+    const type = newProvider.provider_type || 'openai';
+    const name = (newProvider.name || '').trim();
+    const model = (newProvider.model_name || '').trim();
+    if (!name || !model) {
+      return notify('Elige un proveedor (se rellenan nombre y modelo solos)');
+    }
+    if (type !== 'ollama' && !(newProvider.api_key || '').trim()) {
+      return notify('Pega la API key del proveedor cloud');
     }
     try {
       const body = {
-        name: newProvider.name,
-        provider_type: newProvider.provider_type,
-        model_name: newProvider.model_name,
-        api_key: newProvider.provider_type === 'ollama' ? null : newProvider.api_key || null,
+        name,
+        provider_type: type,
+        model_name: model,
+        api_key: type === 'ollama' ? null : newProvider.api_key || null,
         base_url: newProvider.base_url || null,
         monthly_budget_usd: newProvider.monthly_budget_usd
           ? Number(newProvider.monthly_budget_usd)
@@ -747,17 +831,32 @@ export default function App() {
       await api('/ai/providers', { method: 'POST', body: JSON.stringify(body) });
       notify('Proveedor agregado. La API key queda cifrada.');
       setNewProvider({
-        name: '',
+        name: 'OpenAI',
         provider_type: 'openai',
-        model_name: '',
+        model_name: 'gpt-4o',
         api_key: '',
-        base_url: '',
+        base_url: 'https://api.openai.com/v1',
         monthly_budget_usd: '',
-        priority: 50,
+        priority: 20,
       });
       fetchAiStats();
     } catch (e) {
       notify(e.message || 'Error al crear proveedor');
+    }
+  };
+
+  const updateAiProvider = async (providerId, patch) => {
+    if (!providerId || !patch) return;
+    try {
+      await api(`/ai/providers/${providerId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
+      notify(`Modelo actualizado a ${patch.model_name || 'nuevo valor'}`);
+      await fetchAiStats();
+    } catch (e) {
+      notify(e.message || 'No se pudo actualizar el modelo', 'error');
+      throw e;
     }
   };
 
@@ -790,10 +889,13 @@ export default function App() {
     });
   };
 
-  const fetchTop10 = async () => {
+  const fetchTop10 = async ({ persist = false } = {}) => {
     setLoading(true);
     try {
-      const data = normalizeTop10(await api('/top10?days=60&limit=10'));
+      const qs = persist
+        ? '/top10?days=60&limit=10&persist=true'
+        : '/top10?days=60&limit=10';
+      const data = normalizeTop10(await api(qs));
       setTop10(Array.isArray(data) ? data : []);
       // Solo seleccionar #1; NO auto-generar LinkedIn (eso repetía siempre el mismo post)
       if (data.length > 0 && !selectedArticleForApproval) {
@@ -1109,12 +1211,59 @@ export default function App() {
     }
   };
 
+  const fetchEditorialBlogs = async (articleId = null) => {
+    try {
+      const qs = articleId ? `?article_id=${articleId}` : '';
+      const rows = await api(`/blog/editorial${qs}`);
+      setEditorialBlogPosts(Array.isArray(rows) ? rows : []);
+      return rows;
+    } catch (e) {
+      console.error(e);
+      setEditorialBlogPosts([]);
+      return [];
+    }
+  };
+
   const fetchPublishedBlogs = async () => {
     try {
       setPublishedBlogPosts(await api('/blog/published'));
     } catch (e) {
       console.error(e);
     }
+  };
+
+  /** Estudio: genera borrador en sincronía (sin Celery) para que siempre aparezca en la lista. */
+  const generateStudioBlogDraft = async (articleId) => {
+    const id = Number(articleId);
+    if (!Number.isFinite(id) || id <= 0) {
+      notify('No hay noticia seleccionada para el blog', 'error');
+      return;
+    }
+    await withBusy('blog', async () => {
+      try {
+        const post = await api(`/blog/from-article/${id}?regenerate=true`, {
+          method: 'POST',
+        });
+        // Mostrar de inmediato el post devuelto (no esperar solo al listado).
+        if (post?.id) {
+          setEditorialBlogPosts((prev) => {
+            const rest = (prev || []).filter((p) => p.id !== post.id);
+            return [post, ...rest];
+          });
+        }
+        await fetchPendingBlogs();
+        await fetchEditorialBlogs(id);
+        await refreshPilotSources();
+        notify(
+          `Artículo listo: “${(post?.title || 'Borrador').slice(0, 80)}”. Revisa el texto abajo → Publicar para exponerlo.`,
+          'success'
+        );
+        return post;
+      } catch (e) {
+        notify(e.message || 'No se pudo generar el artículo de blog', 'error');
+        return null;
+      }
+    }, { label: 'Generando artículo de blog', etaSec: 90, needsOllama: true, background: false });
   };
 
   const handleApproveArticle = async (articleId) => {
@@ -1134,6 +1283,7 @@ export default function App() {
         }
         setApprovedArticleIds((prev) => new Set(prev).add(articleId));
         await fetchPendingBlogs();
+        await fetchEditorialBlogs(articleId);
         await refreshPilotSources();
         notify(`Artículo ${articleId}: borrador editorial listo para revisión.`, 'success');
       } catch (e) {
@@ -1171,27 +1321,39 @@ export default function App() {
     try {
       await api(`/blog/${postId}/approve`, {
         method: 'POST',
-        body: JSON.stringify({ approved_by: 'Juan Vasquez' }),
+        body: JSON.stringify({ approved_by: authUser?.email || 'Juan Vasquez' }),
       });
       await fetchPendingBlogs();
-      notify('Blog aprobado');
+      await fetchEditorialBlogs(selectedArticleForApproval?.id || null);
+      notify('Blog aprobado. Ya puedes publicarlo para exponerlo.', 'success');
     } catch (e) {
-      notify(e.message || 'Error');
+      notify(e.message || 'Error', 'error');
     }
   };
 
   const publishPendingBlog = async (postId) => {
     try {
-      await api(`/blog/${postId}/publish`, {
+      const published = await api(`/blog/${postId}/publish`, {
         method: 'POST',
-        body: JSON.stringify({ approved_by: 'Juan Vasquez' }),
+        body: JSON.stringify({ approved_by: authUser?.email || 'Juan Vasquez' }),
       });
       await fetchPendingBlogs();
       await fetchPublishedBlogs();
+      await fetchEditorialBlogs(selectedArticleForApproval?.id || null);
       await refreshPilotSources();
-      notify('Blog publicado', 'success');
+      const slug = published?.slug;
+      const publicUrl = slug
+        ? (import.meta.env.VITE_PUBLIC_BLOG_POST_URL || 'http://127.0.0.1:3002/blog/{slug}').replace(
+            '{slug}',
+            encodeURIComponent(slug)
+          )
+        : import.meta.env.VITE_PUBLIC_BLOG_URL || 'http://127.0.0.1:3002';
+      notify('Blog publicado. Abriendo sitio público…', 'success');
+      window.open(publicUrl, '_blank', 'noopener,noreferrer');
+      return published;
     } catch (e) {
-      notify(e.message || 'Error', 'error');
+      notify(e.message || 'Error al publicar', 'error');
+      return null;
     }
   };
 
@@ -1626,10 +1788,15 @@ export default function App() {
             deficitPillars={profile?.deficit_pillars || []}
             top10={top10}
             onUseSuggestion={useArticleInFlow}
-            onRefreshTop10={fetchTop10}
+            onRefreshTop10={() => fetchTop10({ persist: true })}
             onPatrol={runAgenticSearch}
             loadingTop10={loading}
             isSearching={isSearching}
+            adTrendNotes={adTrendNotes}
+            adTrendMessage={adTrendMessage}
+            adTrendBusy={adTrendBusy}
+            onRefreshAdTrendNotes={fetchAdTrendNotes}
+            onGenerateAdTrendNotes={generateAdTrendNotes}
           />
         )}
 
@@ -1647,6 +1814,7 @@ export default function App() {
             testResult={testResult}
             onRefreshModels={fetchAiStats}
             onCreateProvider={createAiProvider}
+            onUpdateProvider={updateAiProvider}
             onRunTest={runGatewayTest}
             agentsCatalog={agentsCatalog}
             agentArticleId={agentArticleId}
@@ -1686,6 +1854,32 @@ export default function App() {
             parseCarouselJson={parseCarouselJson}
             goToTab={goToTab}
             updateContentPiece={updateContentPiece}
+            profile={profile}
+            pendingBlogPosts={pendingBlogPosts}
+            publishedBlogPosts={publishedBlogPosts}
+            editorialBlogPosts={editorialBlogPosts}
+            onGenerateBlog={generateStudioBlogDraft}
+            onApproveBlog={approvePendingBlog}
+            onPublishBlog={publishPendingBlog}
+            blogBusy={isBusy('blog')}
+            onImagesGenerated={(data) => {
+              if (!data) return;
+              setMultiFormatContent((prev) => {
+                if (!prev) return prev;
+                const next = { ...prev };
+                if (Array.isArray(data.slides)) {
+                  next.carousel_slides = data.slides;
+                }
+                if (data.piece) {
+                  next.pieces = (prev.pieces || []).map((p) =>
+                    p.id === data.piece_id || p.id === data.piece.id
+                      ? { ...p, ...data.piece, creatives: data.piece.creatives || data }
+                      : p
+                  );
+                }
+                return next;
+              });
+            }}
           />
         )}
 
@@ -1700,23 +1894,15 @@ export default function App() {
             saveSearchThemes={saveSearchThemes}
             resetSearchThemes={resetSearchThemes}
             applyPdfPillarMix={applyPdfPillarMix}
+            pctRecommendation={pctRecommendation}
+            pctRecMessage={pctRecMessage}
+            pctRecLoading={pctRecLoading}
+            onLoadPctRecommendation={() => fetchPctRecommendation(false)}
+            onGeneratePctRecommendation={() => fetchPctRecommendation(true)}
+            onAcceptPctRecommendation={acceptPctRecommendation}
+            onRejectPctRecommendation={rejectPctRecommendation}
           />
         )}
-
-        {activeTab === 'blog' && (
-          <BlogTab
-            publishedBlogPosts={publishedBlogPosts}
-            pendingBlogPosts={pendingBlogPosts}
-            approvePendingBlog={approvePendingBlog}
-            publishPendingBlog={publishPendingBlog}
-          />
-        )}
-
-        {activeTab === 'publish' && (
-          <PublishTab notify={notify} publishedBlogPosts={publishedBlogPosts} goToTab={goToTab} />
-        )}
-
-        {activeTab === 'marketing' && <MarketingTab notify={notify} />}
 
         {activeTab === 'report' && (
           <ReportTab

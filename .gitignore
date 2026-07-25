@@ -34,3 +34,4 @@ backups/
 Thumbs.db
 backend/chroma_data/
 chroma_data/
+backend/media/

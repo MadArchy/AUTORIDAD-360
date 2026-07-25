@@ -42,8 +42,14 @@ class MembershipRequest(BaseModel):
 
 
 @router.post("/orgs/seed")
-def seed_orgs(db: Session = Depends(get_db)):
-    """Solo development/pilot. En production: 403."""
+def seed_orgs(
+    db: Session = Depends(get_db),
+    ctx=Depends(get_tenant_context),
+):
+    """Solo development/pilot con auth. En production: 403.
+
+    El piloto no debe exponerse a LAN sin JWT; requiere agency_admin.
+    """
     from app.config import settings
 
     if settings.is_production:
@@ -51,6 +57,7 @@ def seed_orgs(db: Session = Depends(get_db)):
             403,
             "Tenant seed is disabled in production. Use internal install commands.",
         )
+    require_roles(ctx, "agency_admin", "superadmin")
     return seed_tenants(db)
 
 

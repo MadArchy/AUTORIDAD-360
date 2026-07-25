@@ -14,6 +14,7 @@ NEWS_TYPOLOGIES: list[dict[str, Any]] = [
     {
         "id": 1,
         "slug": "politica-regulacion-ia",
+        "pillar_slug": "corporativo-compliance",
         "name": "Política y regulación de IA",
         "monitor": (
             "Leyes, proyectos legislativos, políticas públicas, órdenes ejecutivas "
@@ -31,6 +32,7 @@ NEWS_TYPOLOGIES: list[dict[str, Any]] = [
     {
         "id": 2,
         "slug": "ia-mal-implementada",
+        "pillar_slug": "legal-tech-ia",
         "name": "Empresas que implementaron mal la IA",
         "monitor": (
             "Pilotos cancelados, chatbots con errores, sobrecostos, baja adopción interna, "
@@ -48,6 +50,7 @@ NEWS_TYPOLOGIES: list[dict[str, Any]] = [
     {
         "id": 3,
         "slug": "casos-legales-ia",
+        "pillar_slug": "corporativo-compliance",
         "name": "Casos legales por uso de IA",
         "monitor": (
             "Demandas, sanciones, investigaciones regulatorias, decisiones judiciales "
@@ -65,6 +68,7 @@ NEWS_TYPOLOGIES: list[dict[str, Any]] = [
     {
         "id": 4,
         "slug": "ia-exito-empresarial",
+        "pillar_slug": "legal-tech-ia",
         "name": "Empresas que implementaron IA con éxito",
         "monitor": (
             "Casos con mejoras verificables en productividad, servicio, costos, "
@@ -81,6 +85,7 @@ NEWS_TYPOLOGIES: list[dict[str, Any]] = [
     {
         "id": 5,
         "slug": "empresas-rezagadas-ia",
+        "pillar_slug": "legal-tech-ia",
         "name": "Empresas rezagadas en adopción",
         "monitor": (
             "Sectores o compañías que perdieron competitividad, productividad o capacidad "
@@ -97,6 +102,7 @@ NEWS_TYPOLOGIES: list[dict[str, Any]] = [
     {
         "id": 6,
         "slug": "patentes-pi-ia",
+        "pillar_slug": "propiedad-intelectual",
         "name": "Innovación, patentes y Propiedad Intelectual",
         "monitor": (
             "Patentes de IA, inventorship, derechos de autor, secretos empresariales, "
@@ -114,6 +120,7 @@ NEWS_TYPOLOGIES: list[dict[str, Any]] = [
     {
         "id": 7,
         "slug": "inversiones-ia",
+        "pillar_slug": "emprendimiento",
         "name": "Inversiones empresariales en IA",
         "monitor": (
             "Nuevos centros de datos, adquisiciones, alianzas, fondos, expansión de startups, "
@@ -130,6 +137,7 @@ NEWS_TYPOLOGIES: list[dict[str, Any]] = [
     {
         "id": 8,
         "slug": "privacidad-ciberseguridad-ia",
+        "pillar_slug": "corporativo-compliance",
         "name": "Privacidad y ciberseguridad",
         "monitor": (
             "Filtraciones, exposición de información confidencial, entrenamiento con datos corporativos, "
@@ -147,6 +155,7 @@ NEWS_TYPOLOGIES: list[dict[str, Any]] = [
     {
         "id": 9,
         "slug": "empleo-transformacion-ia",
+        "pillar_slug": "legal-tech-ia",
         "name": "Empleo y transformación laboral",
         "monitor": (
             "Automatización de tareas, reestructuraciones, nuevos cargos, capacitación, "
@@ -163,6 +172,7 @@ NEWS_TYPOLOGIES: list[dict[str, Any]] = [
     {
         "id": 10,
         "slug": "ia-abogados-legal",
+        "pillar_slug": "legal-tech-ia",
         "name": "IA para abogados y equipos jurídicos",
         "monitor": (
             "Herramientas legales, confidencialidad, privilegio, revisión humana, ética profesional, "
@@ -180,6 +190,7 @@ NEWS_TYPOLOGIES: list[dict[str, Any]] = [
     {
         "id": 11,
         "slug": "mexico-estados-unidos-ia",
+        "pillar_slug": "comercio-mx-us",
         "name": "Relación México–Estados Unidos",
         "monitor": (
             "Operaciones binacionales, transferencia de datos, contratos, proveedores, "
@@ -326,6 +337,7 @@ def normalize_theme(raw: dict[str, Any], fallback_id: int = 1) -> dict[str, Any]
         "why": str(raw.get("why") or "")[:600],
         "editorial_angle": str(raw.get("editorial_angle") or "")[:400],
         "queries": queries[:12],
+        "pillar_slug": (str(raw.get("pillar_slug") or "").strip().lower()[:64] or None),
         "is_active": bool(raw.get("is_active", True)),
     }
 
@@ -385,6 +397,7 @@ def describe_typologies(typologies: list[dict[str, Any]] | None = None) -> list[
             "monitor": t.get("monitor"),
             "why": t.get("why"),
             "editorial_angle": t.get("editorial_angle"),
+            "pillar_slug": t.get("pillar_slug"),
             "query_count": len(t.get("queries") or []),
             "is_active": t.get("is_active", True),
         }

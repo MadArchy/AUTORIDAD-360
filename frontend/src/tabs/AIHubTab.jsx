@@ -18,6 +18,7 @@ export default function AIHubTab({
   testResult,
   onRefreshModels,
   onCreateProvider,
+  onUpdateProvider,
   onRunTest,
   agentsCatalog,
   agentArticleId,
@@ -90,6 +91,7 @@ export default function AIHubTab({
           testResult={testResult}
           onRefresh={onRefreshModels}
           onCreateProvider={onCreateProvider}
+          onUpdateProvider={onUpdateProvider}
           onRunTest={onRunTest}
         />
       ) : (

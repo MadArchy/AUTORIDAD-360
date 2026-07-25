@@ -113,6 +113,7 @@ class SearchThemeItem(BaseModel):
     why: str | None = None
     editorial_angle: str | None = None
     queries: list[str] = Field(default_factory=list)
+    pillar_slug: str | None = None
     is_active: bool = True
 
 
@@ -376,11 +377,18 @@ def analyze_article_async(
 def top10(
     days: int = 30,
     limit: int = 10,
+    persist: bool = False,
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_tenant_context),
 ):
     require_roles(ctx, *_STAFF)
-    scored = get_top10(db, days=days, organization_id=ctx.org_id, limit=limit)
+    scored = get_top10(
+        db,
+        days=days,
+        organization_id=ctx.org_id,
+        limit=limit,
+        persist=persist,
+    )
     return [
         {
             "rank": i,
@@ -439,6 +447,24 @@ def pending_blog_posts(
         .order_by(BlogPost.created_at.desc())
         .all()
     )
+    return _blog_list_response(posts, db)
+
+
+@router.get("/blog/editorial")
+def editorial_blog_posts(
+    article_id: int | None = None,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Borradores y aprobados del admin (listos para publicar). No incluye published."""
+    require_roles(ctx, *_BLOG_STAFF)
+    q = db.query(BlogPost).filter(
+        BlogPost.organization_id == ctx.org_id,
+        BlogPost.status.in_(("pending", "approved")),
+    )
+    if article_id is not None:
+        q = q.filter(BlogPost.article_id == article_id)
+    posts = q.order_by(BlogPost.created_at.desc()).limit(40).all()
     return _blog_list_response(posts, db)
 
 
@@ -887,6 +913,200 @@ def quota_suggestions(
     }
 
 
+@router.get("/profile/percentage-recommendations")
+def profile_percentage_recommendations(
+    days: int = 30,
+    generate: bool = False,
+    slug: str = "juan-vasquez",
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Devuelve recomendación pendiente; con generate=true calcula una nueva vía leads."""
+    require_roles(ctx, *_PROFILE_MANAGERS)
+    from app.models.learning import PercentageRecommendation
+    from app.services.percentage_adjuster import (
+        MIN_QUALIFIED_TOTAL,
+        build_percentage_recommendation,
+    )
+
+    profile = get_active_profile(db, slug=slug, organization_id=ctx.org_id)
+    if not profile:
+        raise HTTPException(404, "Profile not found")
+
+    pending = (
+        db.query(PercentageRecommendation)
+        .filter(
+            PercentageRecommendation.profile_id == profile.id,
+            PercentageRecommendation.status == "pending",
+        )
+        .order_by(PercentageRecommendation.created_at.desc())
+        .first()
+    )
+    if pending and not generate:
+        return {"recommendation": _pct_rec_response(pending), "message": None}
+
+    if generate:
+        rec = build_percentage_recommendation(
+            db, profile, days=days, organization_id=ctx.org_id
+        )
+        if rec:
+            return {"recommendation": _pct_rec_response(rec), "message": None}
+        return {
+            "recommendation": _pct_rec_response(pending) if pending else None,
+            "message": (
+                f"Faltan leads calificados: se necesitan al menos {MIN_QUALIFIED_TOTAL} "
+                f"en {days} días. Los likes no mueven porcentajes."
+            ),
+        }
+
+    return {
+        "recommendation": None,
+        "message": "No hay sugerencia pendiente. Genera una con leads calificados.",
+    }
+
+
+@router.post("/profile/percentage-recommendations/{rec_id}/accept")
+def accept_percentage_recommendation(
+    rec_id: int,
+    slug: str = "juan-vasquez",
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    require_roles(ctx, *_PROFILE_MANAGERS)
+    from app.models.learning import PercentageRecommendation
+    from app.services.percentage_adjuster import apply_recommendation
+
+    profile = get_active_profile(db, slug=slug, organization_id=ctx.org_id)
+    if not profile:
+        raise HTTPException(404, "Profile not found")
+    rec = (
+        db.query(PercentageRecommendation)
+        .filter_by(id=rec_id, profile_id=profile.id)
+        .first()
+    )
+    if not rec:
+        raise HTTPException(404, "Recommendation not found")
+    try:
+        apply_recommendation(
+            db,
+            rec,
+            actor=getattr(ctx.user, "email", None) or "agency_admin",
+            accept=True,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    profile = get_active_profile(db, slug=slug, organization_id=ctx.org_id)
+    return _profile_response(profile, db)
+
+
+@router.post("/profile/percentage-recommendations/{rec_id}/reject")
+def reject_percentage_recommendation(
+    rec_id: int,
+    slug: str = "juan-vasquez",
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    require_roles(ctx, *_PROFILE_MANAGERS)
+    from app.models.learning import PercentageRecommendation
+    from app.services.percentage_adjuster import apply_recommendation
+
+    profile = get_active_profile(db, slug=slug, organization_id=ctx.org_id)
+    if not profile:
+        raise HTTPException(404, "Profile not found")
+    rec = (
+        db.query(PercentageRecommendation)
+        .filter_by(id=rec_id, profile_id=profile.id)
+        .first()
+    )
+    if not rec:
+        raise HTTPException(404, "Recommendation not found")
+    try:
+        apply_recommendation(
+            db,
+            rec,
+            actor=getattr(ctx.user, "email", None) or "agency_admin",
+            accept=False,
+            reason="Rejected from Profile UI",
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"ok": True, "id": rec_id, "status": "rejected"}
+
+
+@router.get("/profile/ad-trend-notes")
+def get_ad_trend_notes(
+    slug: str = "juan-vasquez",
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Últimas notas de tendencias sociales + publicidad orgánica guardadas."""
+    require_roles(ctx, *_STAFF)
+    from app.services.trend_ad_advisor import get_stored_ad_trend_notes
+
+    notes = get_stored_ad_trend_notes(
+        db, organization_id=ctx.org_id, slug=slug
+    )
+    return {"notes": notes, "message": None if notes else "Aún no hay notas. Genera con tu perfil."}
+
+
+@router.post("/profile/ad-trend-notes/generate")
+def generate_ad_trend_notes_endpoint(
+    slug: str = "juan-vasquez",
+    async_mode: bool = False,
+    max_queries: int = 12,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Investiga redes (DDGS) y regenera notas. Sync por defecto (UI Hoy)."""
+    require_roles(ctx, *_STAFF)
+    from app.services.trend_ad_advisor import generate_ad_trend_notes
+
+    if async_mode:
+        from app.services.job_runner import enqueue_job, job_to_dict
+        from app.tasks import generate_trend_ad_notes_task
+
+        job = enqueue_job(
+            db,
+            job_name="generate_trend_ad_notes",
+            celery_task=generate_trend_ad_notes_task,
+            idempotency_key=f"trend-ad-notes:{ctx.org_id}:{slug}",
+            task_kwargs={
+                "organization_id": ctx.org_id,
+                "slug": slug,
+                "max_queries": min(max(max_queries, 4), 20),
+            },
+            organization_id=ctx.org_id,
+        )
+        return {"job": job_to_dict(job), "notes": None}
+
+    try:
+        notes = generate_ad_trend_notes(
+            db,
+            organization_id=ctx.org_id,
+            slug=slug,
+            max_queries=min(max(max_queries, 4), 20),
+            persist=True,
+        )
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"No se pudieron generar las notas: {exc}") from exc
+    return {"notes": notes, "job": None}
+
+
+def _pct_rec_response(rec) -> dict:
+    return {
+        "id": rec.id,
+        "profile_id": rec.profile_id,
+        "status": rec.status,
+        "rationale": rec.rationale,
+        "evidence": rec.evidence_json,
+        "changes": rec.changes_json or [],
+        "min_qualified_leads": rec.min_qualified_leads,
+        "created_at": rec.created_at.isoformat() if rec.created_at else None,
+    }
+
+
 def _profile_response(profile: ProfessionalProfile, db: Session) -> dict:
     from app.services.news_typologies import default_search_themes, normalize_themes
 
@@ -1329,6 +1549,7 @@ def _piece_response(piece: ContentPiece) -> dict:
         "generation_mode": (piece.generation_json or {}).get("generation_mode"),
         "llm_error": (piece.generation_json or {}).get("llm_error"),
         "model_used": (piece.generation_json or {}).get("model_used"),
+        "creatives": (piece.generation_json or {}).get("creatives"),
         "approved_by": piece.approved_by,
         "approved_at": piece.approved_at.isoformat() if piece.approved_at else None,
         "rejection_reason": piece.rejection_reason,
@@ -1430,6 +1651,74 @@ class CopilotRequest(BaseModel):
     instruction: str = Field(min_length=2, max_length=2000)
     target_field: str = Field(default="full_text")
     provider_mode: str = Field(default="auto")
+    draft_text: str | None = Field(default=None, max_length=50000)
+
+
+@router.post("/content/pieces/{piece_id}/copilot")
+def copilot_refine_piece_route(
+    piece_id: int,
+    req: CopilotRequest,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Chat IA sobre una pieza de formato (Estudio). No persiste; el front aplica y guarda."""
+    require_roles(ctx, *_STAFF)
+    try:
+        from app.services.ai_copilot_service import refine_content_piece
+
+        return refine_content_piece(
+            db,
+            piece_id,
+            instruction=req.instruction,
+            organization_id=ctx.org_id,
+            draft_text=req.draft_text,
+            provider_mode=req.provider_mode,
+        )
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+
+class GenerateImagesRequest(BaseModel):
+    use_openai: bool = True
+
+
+@router.post("/content/pieces/{piece_id}/generate-images")
+def generate_piece_images(
+    piece_id: int,
+    body: GenerateImagesRequest | None = None,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Genera creatividades PNG (OpenAI fondo + tipografía de marca, o solo marca)."""
+    require_roles(ctx, *_STAFF)
+    piece = (
+        db.query(ContentPiece)
+        .filter(
+            ContentPiece.id == piece_id,
+            ContentPiece.organization_id == ctx.org_id,
+        )
+        .first()
+    )
+    if not piece:
+        raise HTTPException(404, "Piece not found")
+    req = body or GenerateImagesRequest()
+    try:
+        from app.services.social_creative_service import generate_creatives_for_piece
+
+        result = generate_creatives_for_piece(
+            db,
+            piece,
+            organization_id=ctx.org_id,
+            use_openai=bool(req.use_openai),
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"No se pudieron generar las imágenes: {exc}") from exc
+    return {
+        **result,
+        "piece": _piece_response(piece),
+    }
 
 
 @router.post("/articles/{article_id}/copilot")

@@ -1,5 +1,20 @@
-import React, { useEffect, useState } from 'react';
-import { ExternalLink, CheckCircle2, Linkedin, Video, Layers, Mail, Copy, Save, Sparkles } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  CheckCircle2,
+  Copy,
+  ExternalLink,
+  Image as ImageIcon,
+  Layers,
+  Linkedin,
+  Mail,
+  Save,
+  Sparkles,
+  Video,
+} from 'lucide-react';
+import FormatPreview from '../components/FormatPreview';
+import PieceCopilotPanel from '../components/PieceCopilotPanel';
+import StudioDistribute from '../components/StudioDistribute';
+import { api } from '../api';
 
 const editorStyle = {
   width: '100%',
@@ -30,6 +45,34 @@ const FORMAT_LABEL = {
   newsletter: 'newsletter',
 };
 
+const FIELD_BY_SUB = {
+  linkedin: 'linkedin_post',
+  video: 'video_script',
+  carousel: 'carousel_slides',
+  newsletter: 'newsletter_edition',
+};
+
+const PIECE_ID_BY_SUB = {
+  linkedin: 'linkedin_piece_id',
+  video: 'video_piece_id',
+  carousel: 'carousel_piece_id',
+  newsletter: 'newsletter_piece_id',
+};
+
+const API_FORMAT_BY_SUB = {
+  linkedin: 'linkedin',
+  video: 'video_script',
+  carousel: 'carousel',
+  newsletter: 'newsletter',
+};
+
+const PREVIEW_FORMAT_BY_SUB = {
+  linkedin: 'linkedin',
+  video: 'video',
+  carousel: 'carousel',
+  newsletter: 'newsletter',
+};
+
 export default function MultiFormatTab({
   selectedArticleForApproval,
   selectedLanguage,
@@ -47,10 +90,18 @@ export default function MultiFormatTab({
   isBusy,
   notify,
   approveContentPiece,
-  reuseContentPiece,
   parseCarouselJson,
   goToTab,
   updateContentPiece,
+  profile = null,
+  pendingBlogPosts = [],
+  publishedBlogPosts = [],
+  editorialBlogPosts = [],
+  onGenerateBlog,
+  onApproveBlog,
+  onPublishBlog,
+  blogBusy = false,
+  onImagesGenerated,
 }) {
   const [drafts, setDrafts] = useState({
     linkedin_post: '',
@@ -59,6 +110,7 @@ export default function MultiFormatTab({
     carousel_slides: '',
   });
   const [saving, setSaving] = useState(null);
+  const [imagesBusy, setImagesBusy] = useState(false);
 
   useEffect(() => {
     if (!multiFormatContent) return;
@@ -143,11 +195,50 @@ export default function MultiFormatTab({
     });
   };
 
+  const carouselSlides = useMemo(() => {
+    try {
+      const parsed = JSON.parse(drafts.carousel_slides || '[]');
+      return parseCarouselJson?.(parsed) || (Array.isArray(parsed) ? parsed : []);
+    } catch {
+      return parseCarouselJson?.(multiFormatContent?.carousel_slides) || [];
+    }
+  }, [drafts.carousel_slides, multiFormatContent?.carousel_slides, parseCarouselJson]);
+
+  const generateImagesForPiece = async (pieceId, subTab) => {
+    if (!pieceId) {
+      notify?.('Guarda o genera el formato primero', 'warn');
+      return;
+    }
+    setImagesBusy(true);
+    try {
+      const data = await api(`/content/pieces/${pieceId}/generate-images`, {
+        method: 'POST',
+        body: JSON.stringify({ use_openai: true }),
+      });
+      if (subTab === 'carousel' && Array.isArray(data?.slides)) {
+        setDrafts((prev) => ({
+          ...prev,
+          carousel_slides: JSON.stringify(data.slides, null, 2),
+        }));
+      }
+      onImagesGenerated?.(data);
+      const engine = data?.engine === 'openai+brand' ? 'IA + marca' : 'marca (tipográficas)';
+      notify?.(`Imágenes listas (${engine}): ${data?.asset_ids?.length || 0}`, 'success');
+    } catch (e) {
+      notify?.(e.message || 'No se pudieron generar las imágenes', 'error');
+    } finally {
+      setImagesBusy(false);
+    }
+  };
+
+  const authorName = profile?.full_name || 'Juan Vásquez';
+  const authorTitle = profile?.title || 'Abogado · Legal Tech & IA';
+
   const renderGenerateGate = (subTab) => (
     <div className="glass-card" style={{ padding: '28px', textAlign: 'center' }}>
       <Sparkles size={28} style={{ color: 'var(--accent-cyan)', marginBottom: 10, opacity: 0.8 }} />
       <p style={{ color: 'var(--text-secondary)', marginBottom: 16 }}>
-        Este formato aún no está generado. Actívalo solo cuando lo necesites (más rápido).
+        Este formato aún no está generado. Actívalo cuando lo necesites; luego verás preview, chat IA y publicar.
       </p>
       <button
         type="button"
@@ -163,67 +254,223 @@ export default function MultiFormatTab({
   );
 
   const renderAIAuditPanel = (formatType) => {
-    if (!multiFormatContent || !multiFormatContent.pieces) return null;
-    const piece = multiFormatContent.pieces.find(p => p.format_type === formatType);
+    if (!multiFormatContent?.pieces) return null;
+    const piece = multiFormatContent.pieces.find((p) => p.format_type === formatType);
     if (!piece) return null;
-
-    // API devuelve brand_review / factual_review; algunos payloads usan *_json
     const brand_review_json = piece.brand_review_json || piece.brand_review || null;
     const factual_review_json = piece.factual_review_json || piece.factual_review || null;
     if (!brand_review_json && !factual_review_json) return null;
-
     const argAnalysis = brand_review_json?.argumentative_analysis || {};
     const argScore = argAnalysis.score ?? 'N/A';
     const isArgPass = argAnalysis.passed;
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '10px', borderLeft: isArgPass ? '4px solid var(--accent-emerald)' : '4px solid var(--accent-amber)', marginTop: '16px' }}>
-        <h4 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          Auditoría de Inteligencia Artificial (Editor AI)
-        </h4>
-        
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          background: 'rgba(0,0,0,0.2)',
+          padding: '16px',
+          borderRadius: '10px',
+          borderLeft: isArgPass ? '4px solid var(--accent-emerald)' : '4px solid var(--accent-amber)',
+          marginTop: '16px',
+        }}
+      >
+        <h4 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0 }}>Auditoría IA</h4>
         <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: '200px' }}>
-                <strong style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Profundidad Argumentativa:</strong>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
-                    <span className="score-tag" style={{ background: isArgPass ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)', color: isArgPass ? 'var(--accent-emerald)' : 'var(--accent-amber)', borderColor: isArgPass ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)' }}>
-                        Score: {argScore}/100
-                    </span>
-                    <span style={{ fontSize: '0.8rem', color: isArgPass ? '#10B981' : '#F59E0B', fontWeight: 600 }}>
-                        {isArgPass ? 'Aprobado' : 'Superficial (Rechazado)'}
-                    </span>
-                </div>
-                {argAnalysis.critique && (
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '8px', lineHeight: 1.4 }}>
-                        <em>"{argAnalysis.critique}"</em>
-                    </p>
-                )}
+          <div style={{ flex: 1, minWidth: '180px' }}>
+            <strong style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Argumentación:</strong>
+            <div style={{ marginTop: 6 }}>
+              <span className="score-tag">Score: {argScore}/100</span>
             </div>
-
-            <div style={{ flex: 1, minWidth: '200px' }}>
-                <strong style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Voz de Marca & Hype:</strong>
-                <div style={{ marginTop: '4px' }}>
-                    {brand_review_json?.passed ? (
-                        <span style={{ fontSize: '0.85rem', color: '#10B981', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}><CheckCircle2 size={14}/> Tono profesional (0 issues)</span>
-                    ) : (
-                        <div style={{ fontSize: '0.85rem', color: '#EF4444', marginTop: '4px' }}>
-                            Falló: {brand_review_json?.issues?.join(', ')}
-                        </div>
-                    )}
-                </div>
-
-                <strong style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginTop: '12px' }}>Factual & Anti-Alucinación:</strong>
-                <div style={{ marginTop: '4px' }}>
-                    {factual_review_json?.passed ? (
-                        <span style={{ fontSize: '0.85rem', color: '#10B981', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}><CheckCircle2 size={14}/> Trazable a la fuente</span>
-                    ) : (
-                        <div style={{ fontSize: '0.85rem', color: '#EF4444', marginTop: '4px' }}>
-                            Alucinación: {factual_review_json?.unsupported_claims?.length} claims sin soporte
-                        </div>
-                    )}
-                </div>
+          </div>
+          <div style={{ flex: 1, minWidth: '180px', fontSize: '0.85rem' }}>
+            {brand_review_json?.passed ? (
+              <span style={{ color: '#10B981', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <CheckCircle2 size={14} /> Marca OK
+              </span>
+            ) : (
+              <span style={{ color: '#EF4444' }}>Marca: {brand_review_json?.issues?.join(', ')}</span>
+            )}
+            <div style={{ marginTop: 8 }}>
+              {factual_review_json?.passed ? (
+                <span style={{ color: '#10B981', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <CheckCircle2 size={14} /> Factual OK
+                </span>
+              ) : (
+                <span style={{ color: '#EF4444' }}>
+                  Claims sin soporte: {factual_review_json?.unsupported_claims?.length}
+                </span>
+              )}
             </div>
+          </div>
         </div>
+      </div>
+    );
+  };
+
+  const renderStudioFormat = (subTab) => {
+    if (!hasFormatContent(subTab)) return renderGenerateGate(subTab);
+
+    const fieldKey = FIELD_BY_SUB[subTab];
+    const pieceIdKey = PIECE_ID_BY_SUB[subTab];
+    const apiFormat = API_FORMAT_BY_SUB[subTab];
+    const pieceId = multiFormatContent?.[pieceIdKey];
+    const draft = drafts[fieldKey] || '';
+    const previewFormat = PREVIEW_FORMAT_BY_SUB[subTab];
+    const titleColor =
+      subTab === 'linkedin'
+        ? 'var(--accent-cyan)'
+        : subTab === 'video'
+          ? 'var(--accent-purple)'
+          : subTab === 'newsletter'
+            ? 'var(--accent-emerald)'
+            : 'var(--accent-cyan)';
+
+    return (
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14, gap: 8, flexWrap: 'wrap' }}>
+          <strong style={{ fontSize: '1.1rem', color: titleColor }}>
+            {FORMAT_LABEL[subTab]} {statusBadge(apiFormat)}
+          </strong>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {subTab !== 'carousel' && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ padding: '4px 12px', fontSize: '0.8rem' }}
+                onClick={() => {
+                  navigator.clipboard.writeText(draft);
+                  notify?.('Copiado', 'success');
+                }}
+              >
+                <Copy size={14} /> Copiar
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ padding: '4px 12px', fontSize: '0.8rem' }}
+              disabled={saving === fieldKey}
+              onClick={() => saveField(fieldKey, pieceId)}
+            >
+              <Save size={14} /> {saving === fieldKey ? 'Guardando…' : 'Guardar'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ padding: '4px 12px', fontSize: '0.8rem' }}
+              disabled={imagesBusy || !pieceId}
+              onClick={() => generateImagesForPiece(pieceId, subTab)}
+              title="Genera creatividades PNG según el contenido"
+            >
+              <ImageIcon size={14} /> {imagesBusy ? 'Generando imágenes…' : 'Generar imágenes'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ padding: '4px 12px', fontSize: '0.8rem' }}
+              disabled={isBusy?.('multiformat')}
+              onClick={() => generateFormat(subTab, true)}
+            >
+              Regenerar
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ padding: '4px 12px', fontSize: '0.8rem' }}
+              onClick={() => approveContentPiece(pieceId)}
+            >
+              Aprobar
+            </button>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1.1fr) minmax(260px, 0.9fr)',
+            gap: 16,
+            alignItems: 'start',
+          }}
+        >
+          <div className="glass-card" style={{ padding: 18 }}>
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(fieldKey, e.target.value)}
+              style={{
+                ...editorStyle,
+                ...(subTab === 'video' || subTab === 'carousel'
+                  ? { fontFamily: 'var(--font-mono)', fontSize: '0.88rem' }
+                  : {}),
+                minHeight: subTab === 'carousel' ? 280 : 220,
+              }}
+              aria-label={`Editar ${FORMAT_LABEL[subTab]}`}
+            />
+            {renderAIAuditPanel(apiFormat)}
+          </div>
+          <FormatPreview
+            format={previewFormat}
+            text={subTab === 'carousel' ? '' : draft}
+            slides={subTab === 'carousel' ? carouselSlides : []}
+            coverUrl={
+              subTab === 'carousel'
+                ? null
+                : (
+                    (multiFormatContent?.pieces || []).find((p) => p.format_type === apiFormat)
+                      ?.body_json?.image_url
+                    || (multiFormatContent?.pieces || []).find((p) => p.format_type === apiFormat)
+                      ?.body_json?.creatives?.covers?.[0]?.image_url
+                    || null
+                  )
+            }
+            authorName={authorName}
+            authorTitle={authorTitle}
+          />
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <PieceCopilotPanel
+            pieceId={pieceId}
+            draftText={draft}
+            providerMode={providerMode}
+            notify={notify}
+            disabled={formatBusy || isBusy?.('multiformat')}
+            onApply={(refined) => setDraft(fieldKey, refined)}
+          />
+        </div>
+
+        <StudioDistribute
+          pieceId={pieceId}
+          pieceStatus={pieceStatus(apiFormat)}
+          articleId={selectedArticleForApproval?.id}
+          pendingBlogPosts={pendingBlogPosts}
+          publishedBlogPosts={publishedBlogPosts}
+          editorialBlogPosts={editorialBlogPosts}
+          onGenerateBlog={onGenerateBlog}
+          onApproveBlog={onApproveBlog}
+          onPublishBlog={onPublishBlog}
+          blogBusy={blogBusy}
+          notify={notify}
+          onImagesGenerated={onImagesGenerated}
+          initialAssetIds={
+            (multiFormatContent?.pieces || []).find((p) => p.format_type === apiFormat)
+              ?.creatives?.asset_ids
+            || (multiFormatContent?.pieces || []).find((p) => p.format_type === apiFormat)
+              ?.generation_json?.creatives?.asset_ids
+            || carouselSlides.map((s) => s.media_asset_id).filter(Boolean)
+          }
+          initialAssets={
+            carouselSlides
+              .filter((s) => s.image_url)
+              .map((s) => ({
+                id: s.media_asset_id,
+                storage_url: s.image_url,
+                title: s.title,
+              }))
+          }
+        />
       </div>
     );
   };
@@ -233,44 +480,48 @@ export default function MultiFormatTab({
       {!selectedArticleForApproval && (
         <section className="glass-panel" style={{ padding: '24px' }}>
           <div className="flow-step-banner">
-            <span>Paso 1 de 3 · Elegir y generar</span>
+            <span>Estudio · elige una noticia</span>
             <button type="button" className="btn btn-secondary" onClick={() => goToTab('hoy')}>
               Ver Hoy
             </button>
           </div>
-          <h2 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: '8px' }}>Generar formatos</h2>
+          <h2 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: '8px' }}>Estudio de contenido</h2>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>
-            Primero elige una noticia. Luego activa solo el formato que necesites (LinkedIn, video, etc.).
+            Genera formatos, previsualiza cómo se verían en redes, mejora con IA y publica o monta el blog desde aquí.
+            Publicar y Blog ya no están menús aparte.
           </p>
           <button className="btn btn-primary" onClick={() => goToTab('hoy')}>
-            Ir a Elegir tema
+            Ir a Hoy
           </button>
         </section>
       )}
+
       {selectedArticleForApproval && (
         <section className="glass-panel" style={{ padding: '24px' }}>
           <div className="flow-step-banner">
             <span>
               {!formatsReady
-                ? 'Paso 1 de 3 · Listo para generar'
+                ? 'Estudio · listo para generar'
                 : anyApproved
-                  ? 'Paso 2 de 3 · Aprobado · listo para publicar'
-                  : 'Paso 2 de 3 · Revisar y aprobar'}
+                  ? 'Estudio · aprobado · distribuir abajo'
+                  : 'Estudio · revisar, chat IA y aprobar'}
             </span>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={!formatsReady}
-              onClick={() => goToTab('publish')}
-            >
-              Siguiente: Publicar
-            </button>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
+
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '20px',
+              flexWrap: 'wrap',
+              gap: '16px',
+            }}
+          >
             <div>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800 }}>Generar formatos</h2>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 800 }}>Estudio de contenido</h2>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                Genera solo el formato de la pestaña activa. Cambia de pestaña y activa otro cuando lo necesites.
+                Editor + preview + chat IA + publicar redes / blog, por formato.
               </p>
             </div>
 
@@ -289,7 +540,7 @@ export default function MultiFormatTab({
                   fontWeight: 600,
                   opacity: formatBusy || isBusy?.('multiformat') ? 0.6 : 1,
                 }}
-                title="Local = Ollama en tu PC. API = tu clave en Inteligencia Artificial."
+                title="Local = Ollama. API = clave en Inteligencia Artificial."
               >
                 <option value="local">IA local (Ollama)</option>
                 <option value="cloud">API web (tu key)</option>
@@ -317,7 +568,6 @@ export default function MultiFormatTab({
                   color: '#FFF',
                   border: '1px solid rgba(255,255,255,0.2)',
                   fontWeight: 600,
-                  opacity: formatBusy || isBusy?.('multiformat') ? 0.6 : 1,
                 }}
               >
                 <option value="es">Español (MX)</option>
@@ -328,185 +578,94 @@ export default function MultiFormatTab({
                   Generando {FORMAT_LABEL[selectedFormatSubTab] || 'formato'}…
                 </span>
               )}
-              {multiFormatContent?.language && !(formatBusy || isBusy?.('multiformat')) && (
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  Paquete: {multiFormatContent.language === 'en' ? 'EN' : 'ES'}
-                </span>
-              )}
             </div>
           </div>
 
-          {/* Article Selector Banner */}
           <div className="source-citation" style={{ marginBottom: '20px' }}>
             <div>
-              <strong style={{ color: '#FFF' }}>Noticia Seleccionada:</strong> {selectedArticleForApproval.title}
-              <span style={{ marginLeft: '12px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>({selectedArticleForApproval.source_name})</span>
+              <strong style={{ color: '#FFF' }}>Noticia:</strong> {selectedArticleForApproval.title}
+              <span style={{ marginLeft: '12px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                ({selectedArticleForApproval.source_name})
+              </span>
             </div>
-            <a href={selectedArticleForApproval.url} target="_blank" rel="noopener noreferrer" className="source-link">
-              Ver Fuente Verificada <ExternalLink size={14} />
-            </a>
+            {(selectedArticleForApproval.url || selectedArticleForApproval.source_url) && (
+              <a
+                href={selectedArticleForApproval.url || selectedArticleForApproval.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="source-link"
+              >
+                Ver fuente <ExternalLink size={14} />
+              </a>
+            )}
           </div>
 
-          {/* Sub-tabs for the 4 Formats */}
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '10px' }}>
-            <button 
+          <div
+            style={{
+              display: 'flex',
+              gap: '10px',
+              marginBottom: '20px',
+              borderBottom: '1px solid rgba(255,255,255,0.1)',
+              paddingBottom: '10px',
+              flexWrap: 'wrap',
+            }}
+          >
+            <button
+              type="button"
               className={`btn ${selectedFormatSubTab === 'linkedin' ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setSelectedFormatSubTab('linkedin')}
             >
-              <Linkedin size={16} /> Publicación LinkedIn
+              <Linkedin size={16} /> LinkedIn
             </button>
-            <button 
+            <button
+              type="button"
               className={`btn ${selectedFormatSubTab === 'video' ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setSelectedFormatSubTab('video')}
             >
-              <Video size={16} /> Guion de Video (Teleprompter)
+              <Video size={16} /> Video
             </button>
-            <button 
+            <button
+              type="button"
               className={`btn ${selectedFormatSubTab === 'carousel' ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setSelectedFormatSubTab('carousel')}
             >
-              <Layers size={16} /> Carrusel (Diapositivas 1-5)
+              <Layers size={16} /> Carrusel
             </button>
-            <button 
+            <button
+              type="button"
               className={`btn ${selectedFormatSubTab === 'newsletter' ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setSelectedFormatSubTab('newsletter')}
             >
-              <Mail size={16} /> Edición Newsletter
+              <Mail size={16} /> Newsletter
             </button>
           </div>
 
-          {/* Multi-format Output Views — un formato a la vez */}
           {multiFormatError && (
-            <div className="glass-card" style={{ padding: '16px', marginBottom: '16px', borderLeft: '4px solid #EF4444', color: 'var(--text-secondary)' }}>
+            <div
+              className="glass-card"
+              style={{
+                padding: '16px',
+                marginBottom: '16px',
+                borderLeft: '4px solid #EF4444',
+                color: 'var(--text-secondary)',
+              }}
+            >
               No se pudo generar: {multiFormatError}
               <div style={{ marginTop: '10px' }}>
-                <button className="btn btn-secondary" onClick={() => generateFormat(selectedFormatSubTab, true)}>
-                  Reintentar este formato
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => generateFormat(selectedFormatSubTab, true)}
+                >
+                  Reintentar
                 </button>
               </div>
             </div>
           )}
 
-          {selectedFormatSubTab === 'linkedin' && (
-            hasFormatContent('linkedin') ? (
-              <div className="glass-card" style={{ padding: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '14px', gap: '8px', flexWrap: 'wrap' }}>
-                  <div>
-                    <strong style={{ fontSize: '1.1rem', color: 'var(--accent-cyan)' }}>
-                      Post LinkedIn {statusBadge('linkedin')}
-                    </strong>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <button className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={() => { navigator.clipboard.writeText(drafts.linkedin_post); notify('Copiado', 'success'); }}>
-                      <Copy size={14} /> Copiar
-                    </button>
-                    <button className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} disabled={saving === 'linkedin_post'} onClick={() => saveField('linkedin_post', multiFormatContent.linkedin_piece_id)}>
-                      <Save size={14} /> {saving === 'linkedin_post' ? 'Guardando…' : 'Guardar'}
-                    </button>
-                    <button className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} disabled={isBusy('multiformat')} onClick={() => generateFormat('linkedin', true)}>Regenerar</button>
-                    <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={() => approveContentPiece(multiFormatContent.linkedin_piece_id)}>Aprobar</button>
-                  </div>
-                </div>
-                <textarea value={drafts.linkedin_post} onChange={(e) => setDraft('linkedin_post', e.target.value)} style={editorStyle} aria-label="Editar post LinkedIn" />
-                {renderAIAuditPanel('linkedin')}
-              </div>
-            ) : renderGenerateGate('linkedin')
-          )}
-
-          {selectedFormatSubTab === 'video' && (
-            hasFormatContent('video') ? (
-              <div className="glass-card" style={{ padding: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '14px', gap: '8px', flexWrap: 'wrap' }}>
-                  <strong style={{ fontSize: '1.1rem', color: 'var(--accent-purple)' }}>Guion de Video {statusBadge('video_script')}</strong>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <button className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={() => { navigator.clipboard.writeText(drafts.video_script); notify('Copiado', 'success'); }}>
-                      <Copy size={14} /> Copiar
-                    </button>
-                    <button className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} disabled={saving === 'video_script'} onClick={() => saveField('video_script', multiFormatContent.video_piece_id)}>
-                      <Save size={14} /> {saving === 'video_script' ? 'Guardando…' : 'Guardar'}
-                    </button>
-                    <button className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} disabled={isBusy('multiformat')} onClick={() => generateFormat('video', true)}>Regenerar</button>
-                    <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={() => approveContentPiece(multiFormatContent.video_piece_id)}>Aprobar</button>
-                  </div>
-                </div>
-                <textarea value={drafts.video_script} onChange={(e) => setDraft('video_script', e.target.value)} style={{ ...editorStyle, fontFamily: 'var(--font-mono)', fontSize: '0.88rem' }} aria-label="Editar guion" />
-                {renderAIAuditPanel('video_script')}
-              </div>
-            ) : renderGenerateGate('video')
-          )}
-
-          {selectedFormatSubTab === 'carousel' && (
-            hasFormatContent('carousel') ? (
-              <div>
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-                  <strong style={{ marginRight: 8 }}>Carrusel {statusBadge('carousel')}</strong>
-                  <button className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} disabled={saving === 'carousel_slides'} onClick={() => saveField('carousel_slides', multiFormatContent.carousel_piece_id)}>
-                    <Save size={14} /> {saving === 'carousel_slides' ? 'Guardando…' : 'Guardar'}
-                  </button>
-                  <button className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} disabled={isBusy('multiformat')} onClick={() => generateFormat('carousel', true)}>Regenerar</button>
-                  <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={() => approveContentPiece(multiFormatContent.carousel_piece_id)}>Aprobar</button>
-                </div>
-                <textarea value={drafts.carousel_slides} onChange={(e) => setDraft('carousel_slides', e.target.value)} style={{ ...editorStyle, minHeight: '280px', fontFamily: 'var(--font-mono)', fontSize: '0.85rem', marginBottom: '16px' }} aria-label="Editar carrusel" />
-                {(() => {
-                  let slides = [];
-                  try {
-                    const parsed = JSON.parse(drafts.carousel_slides || '[]');
-                    slides = parseCarouselJson(parsed);
-                  } catch {
-                    slides = parseCarouselJson(multiFormatContent.carousel_slides);
-                  }
-                  if (!slides.length) {
-                    return (
-                      <p style={{ color: 'var(--text-secondary)' }}>
-                        Edita el JSON de slides arriba o regenera este formato.
-                      </p>
-                    );
-                  }
-                  return (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
-                      {slides.map((slide, idx) => (
-                        <div key={slide.slide ?? idx} className="glass-card" style={{ padding: '20px', borderTop: '4px solid var(--accent-cyan)' }}>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--accent-cyan)' }}>
-                            DIAPOSITIVA {slide.slide || idx + 1} / {slides.length}
-                          </span>
-                          <h4 style={{ fontSize: '1rem', fontWeight: 700, margin: '8px 0' }}>{slide.title}</h4>
-                          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                            {slide.content || slide.text || '—'}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })()}
-                {renderAIAuditPanel('carousel')}
-              </div>
-            ) : renderGenerateGate('carousel')
-          )}
-
-          {selectedFormatSubTab === 'newsletter' && (
-            hasFormatContent('newsletter') ? (
-              <div className="glass-card" style={{ padding: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '14px', gap: '8px', flexWrap: 'wrap' }}>
-                  <strong style={{ fontSize: '1.1rem', color: 'var(--accent-emerald)' }}>Newsletter {statusBadge('newsletter')}</strong>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <button className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={() => { navigator.clipboard.writeText(drafts.newsletter_edition); notify('Copiado', 'success'); }}>
-                      <Copy size={14} /> Copiar
-                    </button>
-                    <button className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} disabled={saving === 'newsletter_edition'} onClick={() => saveField('newsletter_edition', multiFormatContent.newsletter_piece_id)}>
-                      <Save size={14} /> {saving === 'newsletter_edition' ? 'Guardando…' : 'Guardar'}
-                    </button>
-                    <button className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} disabled={isBusy('multiformat')} onClick={() => generateFormat('newsletter', true)}>Regenerar</button>
-                    <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={() => approveContentPiece(multiFormatContent.newsletter_piece_id)}>Aprobar</button>
-                  </div>
-                </div>
-                <textarea value={drafts.newsletter_edition} onChange={(e) => setDraft('newsletter_edition', e.target.value)} style={editorStyle} aria-label="Editar newsletter" />
-                {renderAIAuditPanel('newsletter')}
-              </div>
-            ) : renderGenerateGate('newsletter')
-          )}
+          {renderStudioFormat(selectedFormatSubTab)}
         </section>
       )}
-
     </>
   );
 }

@@ -133,12 +133,30 @@ class ReviewerAgent(BaseAgent):
         return result
 
 
+class TrendAdAdvisorAgent(BaseAgent):
+    name = "trend_ad_advisor"
+    role = (
+        "Advisor de tendencias sociales: investiga LinkedIn/YouTube/X/TikTok/Instagram "
+        "según temas del perfil y sugiere dónde/cómo insertar CTAs orgánicos"
+    )
+    tools = ["trend_ad_notes"]
+    task_type = "agent_plan"
+
+    def plan(self, ctx: AgentContext) -> list[tuple[str, dict[str, Any]]]:
+        kwargs: dict[str, Any] = {
+            "slug": ctx.extras.get("slug") or "juan-vasquez",
+            "max_queries": min(20, max(4, int(ctx.extras.get("max_queries") or 12))),
+        }
+        return [("trend_ad_notes", kwargs)]
+
+
 AGENTS: dict[str, BaseAgent] = {
     "scout": ScoutAgent(),
     "classifier": ClassifierAgent(),
     "verifier": VerifierAgent(),
     "writer": WriterAgent(),
     "reviewer": ReviewerAgent(),
+    "trend_ad_advisor": TrendAdAdvisorAgent(),
 }
 
 
