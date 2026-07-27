@@ -96,9 +96,23 @@ class AIGatewayService:
         """
         Executes text generation through the AI Gateway with automatic fallback across providers.
         """
+        from app.services.crypto_keys import can_decrypt_secret
+
         providers = self.get_active_providers()
 
         for provider in providers:
+            # No intentar cloud con key ilegible (ENCRYPTION_KEY rotada).
+            if (
+                not provider.is_local
+                and provider.encrypted_api_key
+                and not can_decrypt_secret(provider.encrypted_api_key)
+            ):
+                logger.warning(
+                    "AI Gateway skip %s: API key ilegible (re-pegar en Inteligencia Artificial)",
+                    provider.name,
+                )
+                continue
+
             p_start = time.time()
             try:
                 if provider.provider_type == "ollama":

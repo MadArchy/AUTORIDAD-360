@@ -154,10 +154,13 @@ def list_articles(
     category: str | None = None,
     q: str | None = None,
     limit: int = 50,
+    max_age_hours: int | None = 36,
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_tenant_context),
 ):
     require_roles(ctx, *_STAFF)
+    from datetime import datetime, timedelta
+
     from sqlalchemy import or_
     from app.models import NewsCategory
     from sqlalchemy.orm import joinedload
@@ -193,7 +196,19 @@ def list_articles(
             )
         )
 
-    articles = query.order_by(NewsArticle.created_at.desc()).limit(limit).all()
+    # Por defecto solo noticias recientes (fecha de publicación real, no de importación).
+    # max_age_hours=0 o negativo desactiva el filtro.
+    if max_age_hours is not None and int(max_age_hours) > 0:
+        cutoff = datetime.utcnow() - timedelta(hours=int(max_age_hours))
+        query = query.filter(
+            NewsArticle.published_at.isnot(None),
+            NewsArticle.published_at >= cutoff,
+        )
+
+    articles = query.order_by(
+        NewsArticle.published_at.desc(),
+        NewsArticle.created_at.desc(),
+    ).limit(limit).all()
     out = []
     for a in articles:
         cj = a.classification_json or {}
@@ -375,7 +390,7 @@ def analyze_article_async(
 
 @router.get("/top10")
 def top10(
-    days: int = 30,
+    days: int = 1,
     limit: int = 10,
     persist: bool = False,
     db: Session = Depends(get_db),
@@ -1071,7 +1086,7 @@ def generate_ad_trend_notes_endpoint(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_tenant_context),
 ):
-    """Investiga redes (DDGS) y regenera notas. Sync por defecto (UI Hoy)."""
+    """Investiga noticias del día (DB + motores) y regenera notas. Sync por defecto (UI Hoy)."""
     require_roles(ctx, *_STAFF)
     from app.services.trend_ad_advisor import generate_ad_trend_notes
 
@@ -1106,6 +1121,33 @@ def generate_ad_trend_notes_endpoint(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(500, f"No se pudieron generar las notas: {exc}") from exc
     return {"notes": notes, "job": None}
+
+
+@router.post("/profile/ad-trend-notes/generate-image")
+def generate_ad_trend_note_image(
+    platform: str,
+    slug: str = "juan-vasquez",
+    use_openai: bool = True,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Genera la imagen de una plataforma bajo demanda (botón Crear imagen en Hoy)."""
+    require_roles(ctx, *_STAFF)
+    from app.services.trend_ad_advisor import generate_ad_note_image
+
+    try:
+        result = generate_ad_note_image(
+            db,
+            platform=platform,
+            organization_id=ctx.org_id,
+            slug=slug,
+            use_openai=use_openai,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"No se pudo generar la imagen: {exc}") from exc
+    return result
 
 
 def _pct_rec_response(rec) -> dict:
@@ -1700,6 +1742,7 @@ def copilot_refine_piece_route(
 
 class GenerateImagesRequest(BaseModel):
     use_openai: bool = True
+    include_article_context: bool = True
 
 
 @router.post("/content/pieces/{piece_id}/generate-images")
@@ -1730,6 +1773,7 @@ def generate_piece_images(
             piece,
             organization_id=ctx.org_id,
             use_openai=bool(req.use_openai),
+            include_article_context=bool(req.include_article_context),
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(500, f"No se pudieron generar las imágenes: {exc}") from exc

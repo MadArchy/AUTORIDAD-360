@@ -122,13 +122,21 @@ def _plan_tools(agent_name: str, state: EditorialState) -> list[tuple[str, dict[
 
     if agent_name == "scout":
         kwargs: dict[str, Any] = {
-            "max_queries": min(8, max(3, limit * 2)),
-            "max_results_per_query": 2,
-            "max_priority": 8,
+            "max_queries": min(14, max(6, limit * 2)),
+            "max_results_per_query": 4,
+            "max_priority": 11,
+            "max_age_hours": 36,
         }
         if query:
             kwargs["queries"] = [query]
         return [("scout_web", kwargs)]
+
+    if agent_name == "trend_ad_advisor":
+        kwargs = {
+            "max_queries": min(14, max(8, limit * 2)),
+            "slug": (state.get("extras") or {}).get("slug") or "juan-vasquez",
+        }
+        return [("trend_ad_notes", kwargs)]
 
     if agent_name == "classifier":
         if article_id:
@@ -169,6 +177,13 @@ def _apply_tool_artifacts(artifacts: dict[str, Any], tool_name: str, data: dict[
         artifacts["piece_ids"] = data.get("piece_ids", [])
     if tool_name == "scout_web":
         artifacts["scout_stats"] = data.get("stats")
+    if tool_name == "trend_ad_notes":
+        notes = data.get("notes") if isinstance(data.get("notes"), dict) else data
+        artifacts["trend_notes"] = {
+            "generated_at": (notes or {}).get("generated_at"),
+            "trends_count": data.get("trends_count") or len((notes or {}).get("trends") or []),
+            "hits_count": data.get("hits_count") or ((notes or {}).get("meta") or {}).get("hits_count"),
+        }
     if tool_name in ("classify_one", "verify_one") and data.get("article_id"):
         artifacts["article_id"] = data["article_id"]
         artifacts["article_status"] = data.get("status")

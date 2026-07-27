@@ -306,6 +306,14 @@ def _invoke(provider: AIProvider, prompt: str, db: Session | None = None) -> str
 
     if not provider.encrypted_api_key:
         raise ValueError(f"Provider {provider.name} has no API key")
+
+    # Evita reventar el pipeline entero si la key quedó ilegible tras rotar ENCRYPTION_KEY.
+    if not can_decrypt_secret(provider.encrypted_api_key):
+        raise ValueError(
+            f"Provider {provider.name}: API key ilegible (ENCRYPTION_KEY distinta). "
+            "Re-pega la key en Inteligencia Artificial."
+        )
+
     api_key, needs_reencrypt = decrypt_secret_with_rotation(provider.encrypted_api_key)
     if needs_reencrypt and db is not None:
         provider.encrypted_api_key = encrypt_secret(api_key)
@@ -345,7 +353,14 @@ def _providers_for_task(
         )
     rows = query.order_by(AIProvider.priority.asc(), AIProvider.id.asc()).all()
     local = [p for p in rows if p.is_local]
-    paid = [p for p in rows if not p.is_local]
+    # Cloud sin key legible no se usa (evita spam de ENCRYPTION_KEY tras rotar la clave).
+    paid = [
+        p
+        for p in rows
+        if not p.is_local
+        and bool(p.encrypted_api_key)
+        and can_decrypt_secret(p.encrypted_api_key)
+    ]
 
     if mode == "local_only":
         return local
@@ -403,6 +418,24 @@ def complete(
     if not providers:
         mode = (provider_mode or "auto").lower()
         if mode in {"cloud", "api", "paid", "paid_only", "web"}:
+            # Distinguir: hay OpenAI activo pero key ilegible
+            any_broken = (
+                db.query(AIProvider)
+                .filter(
+                    AIProvider.is_active.is_(True),
+                    AIProvider.is_local.is_(False),
+                    AIProvider.encrypted_api_key.isnot(None),
+                )
+                .all()
+            )
+            broken = [p for p in any_broken if not can_decrypt_secret(p.encrypted_api_key)]
+            if broken:
+                names = ", ".join(p.name for p in broken)
+                raise RuntimeError(
+                    f"Cannot decrypt API key — check ENCRYPTION_KEY. "
+                    f"La key de {names} está cifrada con otra clave. "
+                    "Vuelve a pegar la API key en Inteligencia Artificial para re-cifrarla."
+                )
             raise RuntimeError(
                 "No hay proveedor cloud activo con API key. "
                 "Configúralo en Modelos de IA (OpenAI, Anthropic o Gemini)."

@@ -53,6 +53,7 @@ celery_app.conf.update(
         "app.tasks.generate_content_package_task": {"queue": "llm"},
         "app.tasks.generate_blog_draft_task": {"queue": "llm"},
         "app.tasks.generate_trend_ad_notes_task": {"queue": "llm"},
+        "app.tasks.daily_editorial_intelligence": {"queue": "llm"},
     },
     beat_schedule={
         "collect-rss-every-6-hours": {
@@ -66,6 +67,15 @@ celery_app.conf.update(
         "weekly-report-monday-8am": {
             "task": "app.tasks.generate_weekly_report",
             "schedule": crontab(minute=0, hour=8, day_of_week=1),
+        },
+        # Inteligencia del día: scout tipologías + notas/tendencias (07:00 y 13:00 CDMX)
+        "daily-editorial-intelligence-7am": {
+            "task": "app.tasks.daily_editorial_intelligence",
+            "schedule": crontab(minute=0, hour=7),
+        },
+        "daily-editorial-intelligence-1pm": {
+            "task": "app.tasks.daily_editorial_intelligence",
+            "schedule": crontab(minute=0, hour=13),
         },
     },
 )
@@ -314,6 +324,57 @@ def generate_trend_ad_notes_task(
                 "generated_at": notes.get("generated_at"),
                 "trends_count": len(notes.get("trends") or []),
                 "hits_count": (notes.get("meta") or {}).get("hits_count"),
+            }
+        finally:
+            db.close()
+
+    return _run_tracked(job_id, self, work)
+
+
+@celery_app.task(bind=True, name="app.tasks.daily_editorial_intelligence", max_retries=1)
+def daily_editorial_intelligence(
+    self,
+    organization_id: int | None = None,
+    slug: str = "juan-vasquez",
+    job_id: int | None = None,
+):
+    """Scout tipologías del día + regenerar notas/tendencias (beat 07:00)."""
+
+    def work():
+        from app.models import SessionLocal
+        from app.services.agentic_searcher import AgenticSearcherService
+        from app.services.trend_ad_advisor import generate_ad_trend_notes
+
+        db = SessionLocal()
+        try:
+            if organization_id is not None:
+                db.info["organization_id"] = organization_id
+            searcher = AgenticSearcherService(db, organization_id=organization_id)
+            scout_stats = searcher.run_search_cycle(
+                max_results_per_query=4,
+                max_queries=14,
+                max_priority=11,
+                max_age_hours=36,
+            )
+            notes = generate_ad_trend_notes(
+                db,
+                organization_id=organization_id,
+                slug=slug,
+                max_queries=14,
+                persist=True,
+            )
+            return {
+                "ok": True,
+                "scout": {
+                    "saved_to_db": scout_stats.get("saved_to_db"),
+                    "urls_found": scout_stats.get("urls_found"),
+                    "rejected_stale": scout_stats.get("rejected_stale"),
+                },
+                "trends": {
+                    "generated_at": notes.get("generated_at"),
+                    "trends_count": len(notes.get("trends") or []),
+                    "hits_count": (notes.get("meta") or {}).get("hits_count"),
+                },
             }
         finally:
             db.close()

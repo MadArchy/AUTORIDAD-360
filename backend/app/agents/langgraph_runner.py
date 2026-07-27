@@ -18,7 +18,7 @@ from app.agents.graphs import (
 )
 from app.agents.roles import AGENTS
 
-PipelineMode = Literal["discover", "ingest", "article", "full"]
+PipelineMode = Literal["discover", "ingest", "article", "full", "trends"]
 
 
 def list_agents() -> list[dict[str, Any]]:

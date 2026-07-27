@@ -89,7 +89,7 @@ export default function StudioDistribute({
     try {
       const data = await api(`/content/pieces/${pieceId}/generate-images`, {
         method: 'POST',
-        body: JSON.stringify({ use_openai: true }),
+        body: JSON.stringify({ use_openai: true, include_article_context: true }),
       });
       setAssetIds(data?.asset_ids || []);
       setAssets(data?.assets || []);

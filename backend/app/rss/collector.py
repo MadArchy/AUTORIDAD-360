@@ -18,6 +18,7 @@ from app.models.org import Organization
 from app.rss.categories import RSS_CATEGORIES
 from app.services.audit import log_audit
 from app.services.editorial_filters import is_editorial_noise
+from app.services.news_freshness import RSS_MAX_AGE_HOURS, is_stale, utc_now_naive
 
 logger = logging.getLogger(__name__)
 
@@ -158,8 +159,12 @@ def collect_from_category(db: Session, category: NewsCategory, limit: int = 15) 
         if len(full_text) < 80:
             errors += 1
             continue
+        published_at = _parse_date(entry)
+        if is_stale(published_at, max_age_hours=RSS_MAX_AGE_HOURS, now=utc_now_naive()):
+            skipped += 1
+            continue
         digest = _content_hash(title, url, full_text)
-        prepared.append((entry, url, title, full_text, digest))
+        prepared.append((entry, url, title, full_text, digest, published_at))
 
     digests = [row[4] for row in prepared]
     existing_hashes = set()
@@ -176,7 +181,7 @@ def collect_from_category(db: Session, category: NewsCategory, limit: int = 15) 
 
     seen_hashes: set[str] = set()
     seen_urls: set[str] = set()
-    for entry, url, title, full_text, digest in prepared:
+    for entry, url, title, full_text, digest, published_at in prepared:
         if digest in existing_hashes or digest in seen_hashes or url in seen_urls:
             skipped += 1
             continue
@@ -189,7 +194,7 @@ def collect_from_category(db: Session, category: NewsCategory, limit: int = 15) 
             title=title[:512],
             source_url=url[:1024],
             source_name=_source_name(url, feed.feed.get("title")),
-            published_at=_parse_date(entry),
+            published_at=published_at,
             full_text=full_text,
             excerpt=full_text[:500],
             content_hash=digest,

@@ -30,6 +30,7 @@ def tool_scout_web(
     max_results_per_query: int = 2,
     queries: list[str] | None = None,
     max_priority: int = 6,
+    max_age_hours: int = 36,
 ) -> dict[str, Any]:
     """Por defecto prioriza tipologías 1–6 (regulación, fallos, legales, éxito, rezago, PI)."""
     service = AgenticSearcherService(
@@ -41,6 +42,7 @@ def tool_scout_web(
         extra_queries=queries,
         max_queries=max(1, max_queries),
         max_priority=max_priority,
+        max_age_hours=max_age_hours,
     )
     return {"stats": stats}
 

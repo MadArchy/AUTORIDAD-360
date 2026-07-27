@@ -10,16 +10,17 @@ from sqlalchemy.orm import Session
 from app.agents.graph_nodes import bump_write_retry, make_agent_node, route_after_review
 from app.agents.graph_state import EditorialState
 
-PipelineMode = Literal["discover", "ingest", "article", "full"]
+PipelineMode = Literal["discover", "ingest", "article", "full", "trends"]
 
 PIPELINE_STEPS: dict[str, list[str]] = {
-    "discover": ["scout"],
+    "discover": ["scout", "trend_ad_advisor"],
     "ingest": ["classifier"],
     "article": ["classifier", "verifier", "writer", "reviewer"],
     "full": ["scout", "classifier"],
+    "trends": ["trend_ad_advisor"],
 }
 
-AGENT_NAMES = ("scout", "classifier", "verifier", "writer", "reviewer")
+AGENT_NAMES = ("scout", "classifier", "verifier", "writer", "reviewer", "trend_ad_advisor")
 
 
 def _route_if_ok(state: EditorialState) -> str:
@@ -35,8 +36,20 @@ def build_pipeline_graph(db: Session, mode: PipelineMode):
 
     if mode == "discover":
         graph.add_node("scout", make_agent_node(db, "scout"))
+        graph.add_node("trend_ad_advisor", make_agent_node(db, "trend_ad_advisor"))
         graph.add_edge(START, "scout")
-        graph.add_edge("scout", END)
+        graph.add_conditional_edges(
+            "scout",
+            _route_if_ok,
+            {"continue": "trend_ad_advisor", "stop": "trend_ad_advisor"},
+        )
+        graph.add_edge("trend_ad_advisor", END)
+        return graph.compile()
+
+    if mode == "trends":
+        graph.add_node("trend_ad_advisor", make_agent_node(db, "trend_ad_advisor"))
+        graph.add_edge(START, "trend_ad_advisor")
+        graph.add_edge("trend_ad_advisor", END)
         return graph.compile()
 
     if mode == "ingest":
@@ -108,10 +121,11 @@ def describe_pipeline_modes() -> dict[str, Any]:
     return {
         "engine": "langgraph",
         "modes": {
-            "discover": "Solo Scout (búsqueda web + evaluación IA)",
+            "discover": "Scout tipologías del día + notas/tendencias orgánicas",
             "ingest": "Classifier/Verifier en lote (artículos collected)",
             "article": "Clasificar → Verificar → Redactar → Revisar (LangGraph; reintento writer si critique falla)",
             "full": "Scout + lote de clasificación/verificación",
+            "trends": "Solo advisor de tendencias y notas para redes (DDG news del día)",
         },
         "steps": PIPELINE_STEPS,
     }

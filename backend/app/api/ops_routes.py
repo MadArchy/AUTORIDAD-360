@@ -71,9 +71,11 @@ class GenerateCalendarRequest(BaseModel):
 
 class AgenticSearchRequest(BaseModel):
     queries: list[str] | None = None
-    max_results_per_query: int = Field(default=3, ge=1, le=5)
-    max_queries: int | None = Field(default=12, ge=1, le=40)
+    max_results_per_query: int = Field(default=5, ge=1, le=10)
+    max_queries: int | None = Field(default=14, ge=1, le=40)
     max_priority: int = Field(default=11, ge=1, le=11)
+    # Solo noticias recientes (horas). Default: hoy + margen de 36h.
+    max_age_hours: int = Field(default=36, ge=6, le=168)
 
 
 @router.get("/ops/news-typologies")
@@ -175,9 +177,10 @@ def run_agentic_search(
         extra_queries=req.queries,
         max_queries=req.max_queries,
         max_priority=req.max_priority,
+        max_age_hours=req.max_age_hours,
     )
     return {
-        "message": "Búsqueda agentica por tipologías Juan Vásquez completada",
+        "message": "Búsqueda agentica de noticias del día completada",
         "stats": stats,
     }
 

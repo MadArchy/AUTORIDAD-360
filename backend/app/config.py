@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     rss_extract_concurrency: int = 6
     rss_request_timeout_seconds: float = 15.0
     llm_request_timeout_seconds: float = 120.0
+    # Motores de noticias opcionales (failover sobre DDG / Google News RSS)
+    tavily_api_key: str = ""
+    serpapi_api_key: str = ""
+    bing_search_api_key: str = ""
+    bing_search_endpoint: str = "https://api.bing.microsoft.com/v7.0/news/search"
     content_critic_enabled: bool = False
     content_batch_generation_enabled: bool = True
     # Access corto; refresh vive en cookie HttpOnly.

@@ -213,7 +213,7 @@ export default function MultiFormatTab({
     try {
       const data = await api(`/content/pieces/${pieceId}/generate-images`, {
         method: 'POST',
-        body: JSON.stringify({ use_openai: true }),
+        body: JSON.stringify({ use_openai: true, include_article_context: true }),
       });
       if (subTab === 'carousel' && Array.isArray(data?.slides)) {
         setDrafts((prev) => ({
@@ -223,7 +223,10 @@ export default function MultiFormatTab({
       }
       onImagesGenerated?.(data);
       const engine = data?.engine === 'openai+brand' ? 'IA + marca' : 'marca (tipográficas)';
-      notify?.(`Imágenes listas (${engine}): ${data?.asset_ids?.length || 0}`, 'success');
+      const based = data?.article_context?.article_title
+        ? ` · basadas en la noticia`
+        : '';
+      notify?.(`Imágenes listas (${engine}${based}): ${data?.asset_ids?.length || 0}`, 'success');
     } catch (e) {
       notify?.(e.message || 'No se pudieron generar las imágenes', 'error');
     } finally {
@@ -366,10 +369,20 @@ export default function MultiFormatTab({
               style={{ padding: '4px 12px', fontSize: '0.8rem' }}
               disabled={imagesBusy || !pieceId}
               onClick={() => generateImagesForPiece(pieceId, subTab)}
-              title="Genera creatividades PNG según el contenido"
+              title={
+                selectedArticleForApproval?.title
+                  ? `Genera creatividades según la noticia: ${selectedArticleForApproval.title}`
+                  : 'Genera creatividades PNG según el contenido'
+              }
             >
               <ImageIcon size={14} /> {imagesBusy ? 'Generando imágenes…' : 'Generar imágenes'}
             </button>
+            {selectedArticleForApproval?.title ? (
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', maxWidth: 220 }}>
+                Basado en: {selectedArticleForApproval.title.slice(0, 72)}
+                {selectedArticleForApproval.title.length > 72 ? '…' : ''}
+              </span>
+            ) : null}
             <button
               type="button"
               className="btn btn-secondary"

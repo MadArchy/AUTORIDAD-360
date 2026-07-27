@@ -45,8 +45,11 @@ class ScoredArticle:
 
 def _freshness_bonus(published_at: datetime | None) -> float:
     if not published_at:
-        return 50.0
+        # Sin fecha de publicación real no hay bonus de frescura
+        return 20.0
     age = datetime.utcnow() - published_at
+    if age <= timedelta(hours=36):
+        return 100.0
     if age <= timedelta(days=1):
         return 100.0
     if age <= timedelta(days=3):
@@ -59,7 +62,7 @@ def _freshness_bonus(published_at: datetime | None) -> float:
 
 
 def compute_base_score(article: NewsArticle) -> float:
-    freshness = float(article.score_freshness or _freshness_bonus(article.published_at or article.created_at))
+    freshness = float(article.score_freshness or _freshness_bonus(article.published_at))
     components = {
         "relevance": float(article.score_relevance or 0),
         "impact": float(article.score_impact or 0),
@@ -127,10 +130,16 @@ def score_rankable_articles(
     if organization_id is not None:
         query = query.filter(NewsArticle.organization_id == organization_id)
     if days is not None:
-        cutoff = datetime.utcnow() - timedelta(days=max(1, days))
-        query = query.filter(NewsArticle.created_at >= cutoff)
+        if days <= 1:
+            cutoff = datetime.utcnow() - timedelta(hours=36)
+        else:
+            cutoff = datetime.utcnow() - timedelta(days=max(1, days))
+        query = query.filter(
+            NewsArticle.published_at.isnot(None),
+            NewsArticle.published_at >= cutoff,
+        )
     articles = (
-        query.order_by(NewsArticle.created_at.desc())
+        query.order_by(NewsArticle.published_at.desc(), NewsArticle.created_at.desc())
         .limit(max(1, int(candidate_cap)))
         .all()
     )
@@ -143,32 +152,40 @@ def score_rankable_articles(
 
 def get_top10(
     db: Session,
-    days: int = 30,
+    days: int = 1,
     organization_id: int | None = None,
     limit: int = 10,
     *,
     persist: bool = False,
     candidate_cap: int = TOP10_CANDIDATE_CAP,
 ) -> list[ScoredArticle]:
-    """Top noticias del perfil. Por defecto no persiste scores (rápido)."""
+    """Top noticias del perfil (ventana por published_at; default: hoy)."""
+    # days=1 ≈ últimas 36h de publicación (margen de husos)
+    score_days = max(1, days)
     score_rankable_articles(
         db,
         organization_id=organization_id,
         persist=persist,
-        days=days,
+        days=score_days,
         candidate_cap=candidate_cap,
     )
-    cutoff = datetime.utcnow() - timedelta(days=max(1, days))
+
+    # Preferir ventana horaria estricta cuando days==1
+    if days <= 1:
+        cutoff = datetime.utcnow() - timedelta(hours=36)
+    else:
+        cutoff = datetime.utcnow() - timedelta(days=max(1, days))
     filters = [
         NewsArticle.status.in_(RANKABLE_STATUSES),
-        NewsArticle.created_at >= cutoff,
+        NewsArticle.published_at.isnot(None),
+        NewsArticle.published_at >= cutoff,
     ]
     if organization_id is not None:
         filters.append(NewsArticle.organization_id == organization_id)
     articles = (
         db.query(NewsArticle)
         .filter(*filters)
-        .order_by(NewsArticle.created_at.desc())
+        .order_by(NewsArticle.published_at.desc(), NewsArticle.created_at.desc())
         .limit(max(1, int(candidate_cap)))
         .all()
     )

@@ -508,7 +508,7 @@ export default function App() {
 
   const fetchCategories = async () => {
     try {
-      const data = await api('/articles?limit=100');
+      const data = await api('/articles?limit=100&max_age_hours=36');
       const counts = {};
       for (const a of data || []) {
         const key = a.category || 'sin-categoria';
@@ -656,7 +656,7 @@ export default function App() {
   const fetchPctRecommendation = async (generate = false) => {
     setPctRecLoading(true);
     try {
-      const qs = generate ? '?generate=true&days=30' : '?generate=false&days=30';
+      const qs = generate ? '?generate=true&days=1' : '?generate=false&days=1';
       const data = await api(`/profile/percentage-recommendations${qs}`);
       setPctRecommendation(data?.recommendation || null);
       setPctRecMessage(data?.message || null);
@@ -728,6 +728,15 @@ export default function App() {
     } finally {
       setAdTrendBusy(false);
     }
+  };
+
+  const generateAdNoteImage = async (platform) => {
+    const data = await api(
+      `/profile/ad-trend-notes/generate-image?platform=${encodeURIComponent(platform)}&use_openai=true`,
+      { method: 'POST' }
+    );
+    if (data?.notes) setAdTrendNotes(data.notes);
+    return data?.note || null;
   };
 
   const fetchAiStats = async () => {
@@ -858,9 +867,10 @@ export default function App() {
       setIsSearching(true);
       try {
         const body = {
-          max_results_per_query: 2,
-          max_queries: 12,
+          max_results_per_query: 5,
+          max_queries: 14,
           max_priority: 11,
+          max_age_hours: 36,
           queries: searchQuery.trim() ? [searchQuery.trim()] : null,
         };
         const res = await api('/ops/search/run', {
@@ -872,8 +882,9 @@ export default function App() {
           .map(([k, v]) => `${k}:${v}`)
           .slice(0, 6)
           .join(' · ');
+        const stale = res.stats?.rejected_stale ?? 0;
         notify(
-          `Patrulla tipologías: ${res.stats?.saved_to_db || 0} nuevas · rechazadas ${res.stats?.rejected_low_relevance || 0} · ${res.stats?.urls_found || 0} URLs${typeSummary ? ` · ${typeSummary}` : ''}`,
+          `Patrulla del día: ${res.stats?.saved_to_db || 0} nuevas · viejas descartadas ${stale} · baja relevancia ${res.stats?.rejected_low_relevance || 0} · ${res.stats?.urls_found || 0} URLs${typeSummary ? ` · ${typeSummary}` : ''}`,
           'success'
         );
         fetchCategories();
@@ -1002,8 +1013,8 @@ export default function App() {
     setLoading(true);
     try {
       const qs = persist
-        ? '/top10?days=60&limit=10&persist=true'
-        : '/top10?days=60&limit=10';
+        ? '/top10?days=1&limit=10&persist=true'
+        : '/top10?days=1&limit=10';
       const data = normalizeTop10(await api(qs));
       setTop10(Array.isArray(data) ? data : []);
       setTop10Error('');
@@ -1034,14 +1045,22 @@ export default function App() {
     try {
       const params = new URLSearchParams();
       params.set('limit', search || cat ? '100' : '80');
+      params.set('max_age_hours', '36');
       if (cat) params.set('category', cat);
       if (search && search.trim()) params.set('q', search.trim());
       const rows = (await api(`/articles?${params.toString()}`)).map(normalizeArticle);
-      setArticles(rows);
-      setArticlesTotalHint(rows.length);
+      // Cinturón de seguridad: nunca mostrar piezas sin fecha o con fecha vieja
+      const cutoff = Date.now() - 36 * 60 * 60 * 1000;
+      const fresh = rows.filter((a) => {
+        if (!a.published_at) return false;
+        const t = new Date(a.published_at).getTime();
+        return Number.isFinite(t) && t >= cutoff;
+      });
+      setArticles(fresh);
+      setArticlesTotalHint(fresh.length);
       setArticlesError('');
-      if (search && search.trim() && rows.length === 0) {
-        notify(`Sin resultados para “${search.trim()}”. Prueba otra palabra o limpia el filtro.`, 'warn');
+      if (search && search.trim() && fresh.length === 0) {
+        notify(`Sin resultados frescos para “${search.trim()}”. Prueba otra palabra o limpia el filtro.`, 'warn');
       }
     } catch (e) {
       console.error("Error fetching articles", e);
@@ -1914,6 +1933,7 @@ export default function App() {
             adTrendBusy={adTrendBusy}
             onRefreshAdTrendNotes={fetchAdTrendNotes}
             onGenerateAdTrendNotes={generateAdTrendNotes}
+            onGenerateAdNoteImage={generateAdNoteImage}
             onOpenSources={() => goToTab('profile')}
             signalsCount={articlesTotalHint ?? articles?.length ?? 0}
             flowCounts={{

@@ -22,9 +22,10 @@ class ScoutAgent(BaseAgent):
 
     def plan(self, ctx: AgentContext) -> list[tuple[str, dict[str, Any]]]:
         kwargs: dict[str, Any] = {
-            "max_queries": min(8, max(3, ctx.limit * 2)),
-            "max_results_per_query": 2,
-            "max_priority": int(ctx.extras.get("max_priority") or 8),
+            "max_queries": min(14, max(6, ctx.limit * 2)),
+            "max_results_per_query": 4,
+            "max_priority": int(ctx.extras.get("max_priority") or 11),
+            "max_age_hours": int(ctx.extras.get("max_age_hours") or 36),
         }
         if ctx.query:
             kwargs["queries"] = [ctx.query]

@@ -1,18 +1,30 @@
-"""Búsqueda agentica alineada a Tipos_de_Noticias_IA_Juan_Vasquez.pdf."""
+"""Búsqueda agentica alineada a Tipos_de_Noticias_IA_Juan_Vasquez.pdf.
+
+Prioriza noticias del día (Tavily/SerpAPI/Bing → GNews RSS → DDG) y rechaza piezas antiguas.
+"""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import logging
+from datetime import datetime, timedelta
 from typing import Any
 
-from ddgs import DDGS
 import trafilatura
 from sqlalchemy.orm import Session
 
 from app.models.editorial import ArticleStatus, NewsArticle, NewsCategory
 from app.services.ai_gateway import AIGatewayService
+from app.services.news_freshness import (
+    DEFAULT_MAX_AGE_HOURS,
+    extract_explicit_publish_date,
+    is_stale,
+    parse_result_date,
+    resolve_publish_date,
+    utc_now_naive,
+)
+from app.services.news_search_providers import configured_providers, search_news
 from app.services.news_typologies import (
     SEARCH_QUERIES,
     build_eval_prompt,
@@ -27,10 +39,36 @@ logger = logging.getLogger(__name__)
 # Re-export para compatibilidad
 __all__ = ["AgenticSearcherService", "SEARCH_QUERIES", "generate_article_hash"]
 
+NEWS_TIMELIMIT_PRIMARY = "d"  # day
+NEWS_TIMELIMIT_FALLBACK = "w"  # week si el día no trae suficientes candidatos
+
+# Alias legacy usados por tests / imports externos
+_parse_result_date = parse_result_date
+
 
 def generate_article_hash(url: str, title: str) -> str:
     normalized = f"{url.strip().lower()}|{title.strip().lower()}"
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _freshness_query(query: str, *, now: datetime | None = None) -> str:
+    """Añade anclas de frescura sin duplicar el año si ya está en la query."""
+    now = now or utc_now_naive()
+    year = str(now.year)
+    month = now.strftime("%B")
+    q = query.strip()
+    extras: list[str] = []
+    if year not in q:
+        extras.append(year)
+    # Sesgo editorial: noticias / breaking, no evergreen
+    low = q.lower()
+    if "news" not in low and "noticia" not in low:
+        extras.append("news")
+    if month.lower() not in low:
+        extras.append(month)
+    if not extras:
+        return q
+    return f"{q} {' '.join(extras)}"
 
 
 class AgenticSearcherService:
@@ -106,20 +144,43 @@ class AgenticSearcherService:
                 return self._category_by_slug[candidate]
         return self.default_category_id
 
-    def _extract_text(self, url: str) -> str | None:
+    def _extract_text(self, url: str) -> tuple[str | None, datetime | None]:
+        """Extrae cuerpo y fecha de publicación si trafilatura / HTML la detectan."""
         try:
             downloaded = trafilatura.fetch_url(url)
             if not downloaded:
-                return None
-            return trafilatura.extract(
+                return None, None
+            text = trafilatura.extract(
                 downloaded,
                 include_comments=False,
                 include_tables=False,
                 no_fallback=False,
             )
+            published = None
+            try:
+                meta = trafilatura.extract(
+                    downloaded,
+                    output_format="json",
+                    include_comments=False,
+                    include_tables=False,
+                    no_fallback=False,
+                )
+                if meta:
+                    payload = json.loads(meta) if isinstance(meta, str) else meta
+                    if isinstance(payload, dict):
+                        published = parse_result_date(
+                            payload.get("date") or payload.get("date_publish")
+                        )
+            except Exception:  # noqa: BLE001
+                published = None
+            if published is None:
+                published = extract_explicit_publish_date(downloaded)
+            if published is None and text:
+                published = extract_explicit_publish_date(text)
+            return text, published
         except Exception as e:  # noqa: BLE001
             logger.warning("Error extrayendo %s: %s", url, e)
-            return None
+            return None, None
 
     def _evaluate_with_ollama(self, text: str, title: str = "") -> dict[str, Any]:
         """Evalúa relevancia + tipología editorial según temas del perfil."""
@@ -129,7 +190,10 @@ class AgenticSearcherService:
             prompt = prompt_tmpl.format(text=blob[:7500])
             res = self.ai_gateway.generate_text(
                 prompt=prompt,
-                system_prompt="Curador estricto Juan Vásquez. Devuelve SOLO JSON.",
+                system_prompt=(
+                    "Curador estricto Juan Vásquez. Prioriza noticias de las últimas 24–48 h. "
+                    "Devuelve SOLO JSON."
+                ),
             )
             raw_text = res.get("text", "") or ""
             start = raw_text.find("{")
@@ -155,12 +219,46 @@ class AgenticSearcherService:
                 "editorial_fit": False,
             }
 
+    def _search_news(
+        self,
+        query: str,
+        *,
+        max_results: int,
+        timelimit: str,
+    ) -> list[dict[str, Any]]:
+        """Busca noticias con failover multi-motor (APIs → GNews RSS → DDG)."""
+        fresh_q = _freshness_query(query)
+        rows = search_news(
+            fresh_q,
+            max_results=max_results,
+            timelimit=timelimit,
+            prefer_fresh_days=7 if timelimit == "w" else 1,
+        )
+        normalized: list[dict[str, Any]] = []
+        for r in rows or []:
+            url = (r.get("url") or "").strip()
+            title = (r.get("title") or "").strip()
+            if not url or not title:
+                continue
+            normalized.append(
+                {
+                    "url": url,
+                    "title": title,
+                    "body": r.get("body") or "",
+                    "source": r.get("source") or "Web News",
+                    "date": r.get("date"),
+                    "provider": r.get("provider") or "unknown",
+                }
+            )
+        return normalized
+
     def run_search_cycle(
         self,
-        max_results_per_query: int = 2,
+        max_results_per_query: int = 4,
         extra_queries: list[str] | None = None,
         max_queries: int | None = None,
         max_priority: int = 11,
+        max_age_hours: int = DEFAULT_MAX_AGE_HOURS,
     ) -> dict[str, Any]:
         """Ciclo de búsqueda priorizando tipologías del perfil (PDF + temas custom)."""
         typologies = self._load_typologies()
@@ -181,6 +279,9 @@ class AgenticSearcherService:
         # Por defecto cubrir más tipologías (antes 12 dejaba fuera PI/empleo/MX-US)
         cap = max(1, int(max_queries)) if max_queries else 18
         queries = ordered[:cap]
+        age_limit = max(6, int(max_age_hours or DEFAULT_MAX_AGE_HOURS))
+        now = utc_now_naive()
+        cutoff = now - timedelta(hours=age_limit)
 
         stats: dict[str, Any] = {
             "queries_run": len(queries),
@@ -189,111 +290,190 @@ class AgenticSearcherService:
             "extraction_failed": 0,
             "evaluated_by_ai": 0,
             "rejected_low_relevance": 0,
+            "rejected_stale": 0,
             "saved_to_db": 0,
             "by_news_type": {},
             "queries": queries,
+            "freshness": {
+                "mode": "news",
+                "timelimit": NEWS_TIMELIMIT_PRIMARY,
+                "max_age_hours": age_limit,
+                "cutoff_utc": cutoff.isoformat() + "Z",
+                "providers": configured_providers(),
+            },
             "typologies": [
                 t["slug"] for t in typologies if int(t.get("id") or 99) <= max_priority
             ],
         }
 
-        with DDGS() as ddgs:
-            for query in queries:
-                logger.info("Buscando tipología (DDG): %s", query)
-                try:
-                    results = list(ddgs.text(query, max_results=max_results_per_query))
-                    stats["urls_found"] += len(results)
+        per_query = max(3, int(max_results_per_query or 4))
 
-                    for r in results:
-                        url = r.get("href") or ""
-                        title = r.get("title") or ""
-                        if not url:
-                            continue
+        for query in queries:
+            logger.info(
+                "Buscando noticias frescas (%s): %s",
+                ",".join(configured_providers()),
+                query,
+            )
+            try:
+                results = self._search_news(
+                    query,
+                    max_results=per_query,
+                    timelimit=NEWS_TIMELIMIT_PRIMARY,
+                )
+                # Si el día viene seco, ampliar a la semana (luego se filtra por edad).
+                if len(results) < max(2, per_query // 2):
+                    more = self._search_news(
+                        query,
+                        max_results=per_query,
+                        timelimit=NEWS_TIMELIMIT_FALLBACK,
+                    )
+                    seen_urls = {r["url"] for r in results}
+                    for row in more:
+                        if row["url"] not in seen_urls:
+                            results.append(row)
+                            seen_urls.add(row["url"])
 
-                        content_hash = generate_article_hash(url, title)
-                        if content_hash in self.seen_hashes:
-                            stats["already_seen"] += 1
-                            continue
-                        # También dedupe por URL exacta en BD
+                stats["urls_found"] += len(results)
+
+                for r in results:
+                    url = r["url"]
+                    title = r["title"]
+                    engine_date = parse_result_date(r.get("date"))
+
+                    # Descarte temprano si el motor ya trae fecha vieja
+                    if engine_date and is_stale(engine_date, max_age_hours=age_limit, now=now):
+                        stats["rejected_stale"] += 1
+                        logger.info(
+                            "Descartada por antigüedad motor (%s): %s",
+                            engine_date.date(),
+                            url,
+                        )
+                        continue
+
+                    content_hash = generate_article_hash(url, title)
+                    if content_hash in self.seen_hashes:
+                        stats["already_seen"] += 1
+                        continue
+                    # También dedupe por URL exacta en BD
+                    if (
+                        self.db.query(NewsArticle.id)
+                        .filter(NewsArticle.source_url == url[:1024])
+                        .first()
+                    ):
+                        stats["already_seen"] += 1
+                        self.seen_hashes.add(content_hash)
+                        continue
+
+                    full_text, extracted_published = self._extract_text(url)
+                    # La fecha de la PÁGINA manda (evita aceptar 2023 con date "hoy" del motor)
+                    published_at = resolve_publish_date(
+                        engine_date=engine_date,
+                        extracted_date=extracted_published,
+                        html_or_text=f"{title}\n{r.get('body') or ''}\n{(full_text or '')[:2000]}",
+                    )
+                    if published_at and is_stale(published_at, max_age_hours=age_limit, now=now):
+                        stats["rejected_stale"] += 1
+                        logger.info(
+                            "Descartada por fecha real de página (%s): %s",
+                            published_at.date(),
+                            url,
+                        )
+                        continue
+
+                    if not full_text or len(full_text) < 400:
+                        snippet = (r.get("body") or "").strip()
                         if (
-                            self.db.query(NewsArticle.id)
-                            .filter(NewsArticle.source_url == url[:1024])
-                            .first()
+                            published_at
+                            and not is_stale(published_at, max_age_hours=age_limit, now=now)
+                            and len(snippet) >= 80
                         ):
-                            stats["already_seen"] += 1
-                            self.seen_hashes.add(content_hash)
-                            continue
-
-                        full_text = self._extract_text(url)
-                        if not full_text or len(full_text) < 500:
+                            full_text = f"{title}\n\n{snippet}"
+                        else:
                             stats["extraction_failed"] += 1
                             continue
 
-                        if vector_engine.is_active:
-                            if vector_engine.check_is_duplicate(
-                                title + " " + full_text[:1000], threshold=0.15
-                            ):
-                                stats["already_seen"] += 1
-                                continue
+                    # Sin fecha confiable → no inventar "hoy" (así entraban evergreen de 2023)
+                    if not published_at:
+                        stats["rejected_stale"] += 1
+                        logger.info("Descartada sin fecha de publicación confiable: %s", url)
+                        continue
 
-                        stats["evaluated_by_ai"] += 1
-                        eval_data = self._evaluate_with_ollama(full_text, title=title)
-                        relevance = float(eval_data.get("relevance_score") or 0)
-                        type_id = eval_data.get("news_type_id")
-                        typo = typology_by_id(type_id, typologies) if type_id else None
-
-                        logger.info(
-                            "URL: %s | score=%s | type=%s | %s",
-                            url,
-                            relevance,
-                            typo["slug"] if typo else None,
-                            eval_data.get("reason"),
-                        )
-
-                        # Umbral más estricto: tipología + relevancia
-                        if relevance < 60 or not typo:
-                            stats["rejected_low_relevance"] += 1
+                    if vector_engine.is_active:
+                        if vector_engine.check_is_duplicate(
+                            title + " " + full_text[:1000], threshold=0.15
+                        ):
+                            stats["already_seen"] += 1
                             continue
 
-                        slug = typo["slug"]
-                        stats["by_news_type"][slug] = stats["by_news_type"].get(slug, 0) + 1
+                    stats["evaluated_by_ai"] += 1
+                    eval_data = self._evaluate_with_ollama(full_text, title=title)
+                    relevance = float(eval_data.get("relevance_score") or 0)
+                    type_id = eval_data.get("news_type_id")
+                    typo = typology_by_id(type_id, typologies) if type_id else None
 
-                        article = NewsArticle(
-                            organization_id=self.organization_id,
-                            category_id=self._category_for_typology(typo["id"]),
-                            title=title[:512],
-                            source_url=url[:1024],
-                            source_name=f"Web Search · {typo['name']}",
-                            full_text=full_text,
-                            excerpt=(eval_data.get("reason") or "")[:500],
-                            content_hash=content_hash,
-                            status=ArticleStatus.COLLECTED.value,
-                            classification_json={
-                                "scout": {
-                                    "news_type_id": typo["id"],
-                                    "news_type_slug": slug,
-                                    "news_type_name": typo["name"],
-                                    "pillar_slug": typo.get("pillar_slug"),
-                                    "relevance_score": relevance,
-                                    "reason": eval_data.get("reason"),
-                                    "editorial_fit": eval_data.get("editorial_fit"),
-                                    "four_questions_ok": eval_data.get("four_questions_ok"),
-                                    "query": query,
-                                },
+                    logger.info(
+                        "URL: %s | score=%s | type=%s | published=%s | %s",
+                        url,
+                        relevance,
+                        typo["slug"] if typo else None,
+                        published_at.isoformat() if published_at else None,
+                        eval_data.get("reason"),
+                    )
+
+                    # Umbral más estricto: tipología + relevancia
+                    if relevance < 60 or not typo:
+                        stats["rejected_low_relevance"] += 1
+                        continue
+
+                    slug = typo["slug"]
+                    stats["by_news_type"][slug] = stats["by_news_type"].get(slug, 0) + 1
+                    age_hours = max(0.0, (now - published_at).total_seconds() / 3600.0)
+                    freshness_bonus = (
+                        15.0 if age_hours <= 24 else (8.0 if age_hours <= age_limit else 0.0)
+                    )
+
+                    article = NewsArticle(
+                        organization_id=self.organization_id,
+                        category_id=self._category_for_typology(typo["id"]),
+                        title=title[:512],
+                        source_url=url[:1024],
+                        source_name=(r.get("source") or f"Web News · {typo['name']}")[:128],
+                        full_text=full_text,
+                        excerpt=(eval_data.get("reason") or r.get("body") or "")[:500],
+                        content_hash=content_hash,
+                        status=ArticleStatus.COLLECTED.value,
+                        published_at=published_at,
+                        classification_json={
+                            "scout": {
+                                "news_type_id": typo["id"],
+                                "news_type_slug": slug,
+                                "news_type_name": typo["name"],
                                 "pillar_slug": typo.get("pillar_slug"),
+                                "relevance_score": relevance,
+                                "reason": eval_data.get("reason"),
+                                "editorial_fit": eval_data.get("editorial_fit"),
+                                "four_questions_ok": eval_data.get("four_questions_ok"),
+                                "query": query,
+                                "search_mode": "news",
+                                "provider": r.get("provider"),
+                                "published_at": published_at.isoformat() + "Z",
+                                "age_hours": round(age_hours, 2),
                             },
-                            score_relevance=relevance,
-                        )
-                        self.db.add(article)
-                        self.seen_hashes.add(content_hash)
-                        stats["saved_to_db"] += 1
-                        self.db.commit()
-                        self.db.refresh(article)
+                            "pillar_slug": typo.get("pillar_slug"),
+                        },
+                        score_relevance=min(100.0, relevance + freshness_bonus),
+                        score_freshness=100.0 if age_hours <= 24 else max(40.0, 100.0 - age_hours),
+                    )
+                    self.db.add(article)
+                    self.seen_hashes.add(content_hash)
+                    stats["saved_to_db"] += 1
+                    self.db.commit()
+                    self.db.refresh(article)
 
-                        if vector_engine.is_active:
-                            vector_engine.index_article(article.id, title, full_text[:2000])
+                    if vector_engine.is_active:
+                        vector_engine.index_article(article.id, title, full_text[:2000])
 
-                except Exception as e:  # noqa: BLE001
-                    logger.error("Error procesando query '%s': %s", query, e)
+            except Exception as e:  # noqa: BLE001
+                logger.error("Error procesando query '%s': %s", query, e)
 
         return stats
