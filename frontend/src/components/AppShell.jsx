@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  ArrowLeft,
   Cpu,
   Home,
   LogOut,
@@ -210,6 +211,18 @@ export default function AppShell({
             </div>
           </div>
           <div className="workspace-actions">
+            {activeTab !== 'hoy' && (
+              <button
+                type="button"
+                className="btn btn-secondary workspace-back"
+                onClick={() => onNavigate('hoy')}
+                title="Volver a Hoy"
+                aria-label="Volver a Hoy"
+              >
+                <ArrowLeft size={16} aria-hidden="true" />
+                <span>Volver a Hoy</span>
+              </button>
+            )}
             <button
               type="button"
               className="btn btn-primary"

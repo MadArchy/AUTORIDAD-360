@@ -403,6 +403,7 @@ function buildSocialNotes(adTrendNotes) {
 export default function HoyTab({
   top10 = [],
   onUseSuggestion,
+  onCreateFromTrend,
   onRefreshTop10,
   onPatrol,
   loadingTop10 = false,
@@ -431,6 +432,7 @@ export default function HoyTab({
   const [focusedId, setFocusedId] = useState(null);
   const [trendFilter, setTrendFilter] = useState('todos');
   const [trendsExpanded, setTrendsExpanded] = useState(false);
+  const [creatingTrendId, setCreatingTrendId] = useState(null);
   const priorityRef = useRef(null);
 
   const ranked = useMemo(
@@ -484,11 +486,27 @@ export default function HoyTab({
   };
 
   const trendCards = useMemo(() => {
+    const catalog = [...ranked, ...remainingArticles];
+    const byId = new Map();
+    const byUrl = new Map();
+    for (const art of catalog) {
+      const id = art?.id ?? art?.article_id;
+      if (id != null) byId.set(String(id), art);
+      const u = (art?.source_url || art?.url || '').split('?')[0].toLowerCase();
+      if (u) byUrl.set(u, art);
+    }
+
     const fromTrends = (trends || [])
       .map((t, i) => {
         const platformKey = normalizePlatformKey(t.platform);
         const title = t.summary || t.title || t.theme || 'Tendencia detectada';
         const url = (t.urls && t.urls[0]) || null;
+        const urlKey = (url || '').split('?')[0].toLowerCase();
+        const articleId = t.article_id ?? t.articleId ?? null;
+        const article =
+          (articleId != null ? byId.get(String(articleId)) : null)
+          || (urlKey ? byUrl.get(urlKey) : null)
+          || null;
         const detected = t.detected_at || null;
         const growthPct = t.growth_pct != null ? Math.round(Number(t.growth_pct)) : null;
         const urgency = t.urgency || null;
@@ -503,11 +521,12 @@ export default function HoyTab({
           urgency,
           tags: [t.theme, t.market].filter(Boolean).slice(0, 3),
           url,
+          articleId: articleId || article?.id || article?.article_id || null,
+          article,
         };
       })
       .filter((c) => {
         if (looksStaleTitle(c.title)) return false;
-        // Pulse/evergreen de LinkedIn sin fecha propia → no mostrar como "tendencia del día"
         if (/linkedin\.com\/pulse/i.test(c.url || '') && !c.detectedAt) return false;
         if (c.detectedAt && !isFreshIso(c.detectedAt, 72)) return false;
         return true;
@@ -533,10 +552,11 @@ export default function HoyTab({
           urgency: growthPct == null ? urgencyFromScore(score) : null,
           tags: [art.category, art.matched_pillar_name || art.matched_pillar].filter(Boolean).slice(0, 3),
           url: art.source_url || art.url || null,
+          articleId: art.id || art.article_id || null,
           article: art,
         };
       });
-  }, [trends, remainingArticles, adTrendNotes]);
+  }, [trends, remainingArticles, ranked, adTrendNotes]);
 
   const filteredTrendCards = useMemo(
     () => trendCards.filter((c) => cardMatchesFilter(c, trendFilter)),
@@ -554,6 +574,24 @@ export default function HoyTab({
     setImageErrorByKey({});
     setImageBusyKey(null);
   }, [adTrendNotes?.generated_at]);
+
+  const handleCreateTrendContent = async (card) => {
+    if (!card || creatingTrendId) return;
+    setCreatingTrendId(card.id);
+    try {
+      if (typeof onCreateFromTrend === 'function') {
+        await onCreateFromTrend(card);
+        return;
+      }
+      if (card.article) {
+        onUseSuggestion?.(card.article);
+        return;
+      }
+      // Sin artículo: no abrir la URL (eso no es «crear contenido»)
+    } finally {
+      setCreatingTrendId(null);
+    }
+  };
 
   const handleCreateNoteImage = async (platformKey) => {
     if (!onGenerateAdNoteImage || imageBusyKey) return;
@@ -968,13 +1006,10 @@ export default function HoyTab({
                   <button
                     type="button"
                     className="cmd-trend-card__create"
-                    onClick={() => {
-                      if (card.article) onUseSuggestion?.(card.article);
-                      else if (card.url) window.open(card.url, '_blank', 'noopener,noreferrer');
-                      else onOpenLive?.();
-                    }}
+                    disabled={creatingTrendId === card.id}
+                    onClick={() => handleCreateTrendContent(card)}
                   >
-                    Crear contenido
+                    {creatingTrendId === card.id ? 'Abriendo…' : 'Crear contenido'}
                   </button>
                 </div>
               </article>

@@ -418,7 +418,7 @@ export default function App() {
     setSelectedArticleForApproval({
       ...normalized,
       id: articleId,
-      content_full: art.summary || art.content_full || '',
+      content_full: art.summary || art.content_full || art.full_text || '',
       summary: art.summary || '',
       url: art.source_url || art.url,
     });
@@ -427,6 +427,64 @@ export default function App() {
     fetchPublishedBlogs();
     fetchEditorialBlogs(articleId);
     // La generación solo arranca cuando el usuario autoriza en Generar formatos
+  };
+
+  const createContentFromTrend = async (card) => {
+    const urlKey = (card?.url || '').split('?')[0].toLowerCase();
+    const findLocal = () => {
+      if (card?.article) return card.article;
+      const pools = [...(top10 || []), ...(articles || [])];
+      if (card?.articleId != null) {
+        const byId = pools.find(
+          (a) => String(a.id ?? a.article_id) === String(card.articleId)
+        );
+        if (byId) return byId;
+      }
+      if (urlKey) {
+        return pools.find(
+          (a) => (a.source_url || a.url || '').split('?')[0].toLowerCase() === urlKey
+        ) || null;
+      }
+      return null;
+    };
+
+    let art = findLocal();
+    if (!art && card?.articleId) {
+      try {
+        art = normalizeArticle(await api(`/articles/${card.articleId}`));
+      } catch {
+        art = null;
+      }
+    }
+    if (!art && card?.title) {
+      try {
+        const q = encodeURIComponent(String(card.title).slice(0, 80));
+        const rows = (await api(`/articles?q=${q}&limit=20&max_age_hours=72`)).map(normalizeArticle);
+        if (urlKey) {
+          art = rows.find(
+            (a) => (a.source_url || a.url || '').split('?')[0].toLowerCase() === urlKey
+          ) || null;
+        }
+        if (!art && rows.length === 1) art = rows[0];
+        if (!art && rows.length) {
+          // Mejor match por título aproximado
+          const needle = String(card.title).toLowerCase().slice(0, 40);
+          art = rows.find((a) => String(a.title || '').toLowerCase().includes(needle)) || rows[0];
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    if (!art?.id && !art?.article_id) {
+      notify(
+        'No hay noticia en inventario para esta señal. Actualiza Hoy o elige una del Top 10.',
+        'warn'
+      );
+      return;
+    }
+    useArticleInFlow(art);
+    notify('Listo en Estudio — autoriza la generación de formatos');
   };
 
   const packagePieces = useMemo(
@@ -1923,6 +1981,7 @@ export default function App() {
           <HoyTab
             top10={top10}
             onUseSuggestion={useArticleInFlow}
+            onCreateFromTrend={createContentFromTrend}
             onRefreshTop10={() => fetchTop10({ persist: true })}
             onPatrol={runAgenticSearch}
             loadingTop10={loading}

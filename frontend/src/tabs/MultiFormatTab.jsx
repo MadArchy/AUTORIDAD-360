@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ArrowLeft,
   CheckCircle2,
   Copy,
   ExternalLink,
@@ -530,6 +531,15 @@ export default function MultiFormatTab({
                   ? 'Estudio · aprobado · distribuir abajo'
                   : 'Estudio · revisar, chat IA y aprobar'}
             </span>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => goToTab('hoy')}
+              aria-label="Volver a Hoy"
+            >
+              <ArrowLeft size={15} aria-hidden="true" style={{ marginRight: 6, verticalAlign: 'middle' }} />
+              Volver a Hoy
+            </button>
           </div>
 
           <div

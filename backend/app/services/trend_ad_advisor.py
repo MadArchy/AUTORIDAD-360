@@ -565,6 +565,7 @@ def _fallback_notes(
                 "growth_pct": None,
                 "urgency": "Media",
                 "market": "México" if "méxico" in (h.get("query") or "").lower() else None,
+                "article_id": h.get("article_id"),
             }
         )
     sparse = len(trends) == 0
@@ -645,6 +646,7 @@ def _synthesize_with_llm(
             "snippet": (h.get("snippet") or "")[:220],
             "detected_at": h.get("detected_at"),
             "source": h.get("source"),
+            "article_id": h.get("article_id"),
         }
         for h in hits[:28]
         if h.get("detected_at")
@@ -755,6 +757,18 @@ Reglas:
             # No confiar en growth inventado
             if t.get("growth_pct") is not None and not isinstance(t.get("growth_pct"), (int, float)):
                 t["growth_pct"] = None
+            # Anclar article_id desde evidence (para «Crear contenido» en Hoy)
+            if not t.get("article_id"):
+                match = next(
+                    (
+                        e
+                        for e in evidence
+                        if (e.get("url") or "").split("?")[0].lower() == url_key
+                    ),
+                    None,
+                )
+                if match and match.get("article_id"):
+                    t["article_id"] = match["article_id"]
             cleaned_trends.append(t)
         trends = cleaned_trends
         ad_notes = data.get("ad_notes") if isinstance(data.get("ad_notes"), list) else []
@@ -846,6 +860,27 @@ def generate_ad_trend_notes(
             continue
         seen.add(key)
         hits.append(h)
+
+    # Enlazar article_id a hits de búsqueda si la URL ya está en inventario
+    missing_urls = [
+        (h.get("url") or "")[:1024]
+        for h in hits
+        if not h.get("article_id") and h.get("url")
+    ]
+    if missing_urls:
+        q = db.query(NewsArticle.id, NewsArticle.source_url)
+        if org_id is not None:
+            q = q.filter(NewsArticle.organization_id == org_id)
+        rows = q.filter(NewsArticle.source_url.in_(missing_urls)).all()
+        by_url = {
+            (r.source_url or "").split("?")[0].lower(): r.id for r in rows if r.source_url
+        }
+        for h in hits:
+            if h.get("article_id"):
+                continue
+            key = (h.get("url") or "").split("?")[0].lower()
+            if key in by_url:
+                h["article_id"] = by_url[key]
 
     notes = _synthesize_with_llm(db, profile, hits, queries)
     if not notes:
