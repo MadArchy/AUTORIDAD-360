@@ -13,7 +13,13 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.ai_providers import AIProvider, AIUsageLog
-from app.services.crypto_keys import decrypt_secret, encrypt_secret, key_hint
+from app.services.crypto_keys import (
+    can_decrypt_secret,
+    decrypt_secret,
+    decrypt_secret_with_rotation,
+    encrypt_secret,
+    key_hint,
+)
 from app.services.model_router import estimate_cost, resolve_routing_mode, routing_mode
 from app.services.url_safety import validate_provider_base_url
 
@@ -37,8 +43,19 @@ def seed_default_ollama(db: Session) -> AIProvider:
         .first()
     )
     if existing:
+        desired = (settings.ollama_base_url or "").rstrip("/")
+        changed = False
         if existing.model_name != model_name and not existing.meta_json:
             existing.model_name = model_name
+            changed = True
+        # Corrige URLs loopback guardadas cuando el runtime está en Docker.
+        current = (existing.base_url or "").rstrip("/")
+        if desired and current and (
+            "127.0.0.1" in current or "localhost" in current.lower()
+        ) and current != desired:
+            existing.base_url = desired
+            changed = True
+        if changed:
             db.commit()
             db.refresh(existing)
         return existing
@@ -60,6 +77,10 @@ def seed_default_ollama(db: Session) -> AIProvider:
 
 
 def mask_provider(provider: AIProvider) -> dict[str, Any]:
+    has_key = bool(provider.encrypted_api_key)
+    key_ok = True if provider.is_local or not has_key else can_decrypt_secret(
+        provider.encrypted_api_key
+    )
     return {
         "id": provider.id,
         "organization_id": provider.organization_id,
@@ -68,7 +89,8 @@ def mask_provider(provider: AIProvider) -> dict[str, Any]:
         "model_name": provider.model_name,
         "base_url": provider.base_url,
         "key_hint": provider.key_hint,
-        "has_api_key": bool(provider.encrypted_api_key),
+        "has_api_key": has_key,
+        "key_ok": key_ok,
         "is_local": provider.is_local,
         "is_active": provider.is_active,
         "monthly_budget_usd": float(provider.monthly_budget_usd)
@@ -178,8 +200,22 @@ def _log_usage(
     db.commit()
 
 
+def _ollama_base_url(provider: AIProvider) -> str:
+    """Resuelve la URL de Ollama usable desde el proceso actual (Docker vs host)."""
+    configured = (provider.base_url or "").strip().rstrip("/")
+    fallback = (settings.ollama_base_url or "http://127.0.0.1:11434").rstrip("/")
+    if not configured:
+        return fallback
+    # En contenedores, 127.0.0.1/localhost apunta al propio container, no al host.
+    lowered = configured.lower()
+    if "127.0.0.1" in lowered or "localhost" in lowered:
+        if "host.docker.internal" in fallback.lower() or fallback != configured:
+            return fallback
+    return configured
+
+
 def _call_ollama(provider: AIProvider, prompt: str) -> str:
-    base = (provider.base_url or settings.ollama_base_url).rstrip("/")
+    base = _ollama_base_url(provider)
     url = f"{base}/api/chat"
     # gemma4:e2b tiene "thinking": sin think=false gasta tokens en razonar
     # y a menudo deja message.content vacío → fallos/timeouts.
@@ -264,13 +300,18 @@ def _call_gemini(provider: AIProvider, prompt: str, api_key: str) -> str:
     return "".join(p.get("text", "") for p in parts if isinstance(p, dict))
 
 
-def _invoke(provider: AIProvider, prompt: str) -> str:
+def _invoke(provider: AIProvider, prompt: str, db: Session | None = None) -> str:
     if provider.provider_type == "ollama":
         return _call_ollama(provider, prompt)
 
     if not provider.encrypted_api_key:
         raise ValueError(f"Provider {provider.name} has no API key")
-    api_key = decrypt_secret(provider.encrypted_api_key)
+    api_key, needs_reencrypt = decrypt_secret_with_rotation(provider.encrypted_api_key)
+    if needs_reencrypt and db is not None:
+        provider.encrypted_api_key = encrypt_secret(api_key)
+        db.add(provider)
+        db.commit()
+        logger.info("Re-encrypted API key for provider_id=%s with current ENCRYPTION_KEY", provider.id)
 
     if provider.provider_type == "openai":
         return _call_openai_compatible(provider, prompt, api_key)
@@ -388,7 +429,7 @@ def complete(
             continue
         started = time.perf_counter()
         try:
-            text = _invoke(provider, prompt)
+            text = _invoke(provider, prompt, db=db)
             latency_ms = int((time.perf_counter() - started) * 1000)
             prompt_tokens = max(1, len(prompt) // 4)
             completion_tokens = max(1, len(text) // 4)
@@ -443,7 +484,15 @@ def complete(
                 str(exc)[:300],
             )
 
-    raise RuntimeError("All AI providers failed: " + " | ".join(errors))
+    raise RuntimeError(
+        "All AI providers failed: "
+        + " | ".join(errors)
+        + (
+            " Si ves ENCRYPTION_KEY, vuelve a pegar la API key en Inteligencia Artificial."
+            if any("ENCRYPTION_KEY" in e or "decrypt" in e.lower() for e in errors)
+            else ""
+        )
+    )
 
 
 def test_provider(
@@ -452,7 +501,7 @@ def test_provider(
     started = time.perf_counter()
     user_prompt = (prompt or "").strip() or "Responde solo con la palabra OK."
     try:
-        text = _invoke(provider, user_prompt)
+        text = _invoke(provider, user_prompt, db=db)
         ok = True
         error = None
         latency_ms = int((time.perf_counter() - started) * 1000)

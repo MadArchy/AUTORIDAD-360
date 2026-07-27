@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.models.ai_providers import AIProvider
 from app.models.content import ContentPiece
 from app.models.publishing import MediaAsset
-from app.services.crypto_keys import decrypt_secret
+from app.services.crypto_keys import decrypt_secret_with_rotation, encrypt_secret
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,11 @@ def _openai_api_key(db: Session) -> str | None:
     for p in providers:
         if p.encrypted_api_key:
             try:
-                key = decrypt_secret(p.encrypted_api_key)
+                key, needs_reencrypt = decrypt_secret_with_rotation(p.encrypted_api_key)
+                if needs_reencrypt:
+                    p.encrypted_api_key = encrypt_secret(key)
+                    db.add(p)
+                    db.commit()
                 if key and key.strip():
                     return key.strip()
             except Exception as exc:  # noqa: BLE001

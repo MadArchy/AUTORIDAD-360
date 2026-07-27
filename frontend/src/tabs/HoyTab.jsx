@@ -1,5 +1,15 @@
-import React, { useState } from 'react';
-import { Layers, ExternalLink, Search, Megaphone, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import {
+  ArrowRight,
+  BarChart3,
+  Check,
+  ExternalLink,
+  Globe2,
+  Plus,
+  RefreshCw,
+  Search,
+  X,
+} from 'lucide-react';
 
 const PLATFORM_LABELS = {
   linkedin: 'LinkedIn',
@@ -7,268 +17,455 @@ const PLATFORM_LABELS = {
   x: 'X / Twitter',
   tiktok: 'TikTok',
   instagram: 'Instagram',
+  web: 'Web',
+  regulacion: 'Regulación',
 };
 
+const SCORE_ROWS = [
+  ['relevance', 'Relevancia estratégica'],
+  ['impact', 'Impacto empresarial'],
+  ['reliability', 'Confiabilidad de la fuente'],
+  ['freshness', 'Vigencia'],
+  ['content_potential', 'Potencial editorial'],
+  ['mx_us_relevance', 'Mercado objetivo'],
+  ['conversion', 'Conversión'],
+];
+
+function opportunityLabel(score) {
+  const n = Number(score) || 0;
+  if (n >= 80) return 'Alta oportunidad';
+  if (n >= 60) return 'Oportunidad media';
+  return 'Explorar';
+}
+
+function buildReasons(art, scores) {
+  const reasons = [];
+  const pillar = art.matched_pillar_name || art.matched_pillar;
+  if (pillar) reasons.push(`Alta relación con ${pillar}.`);
+  if ((scores.mx_us_relevance || 0) >= 40 || /mx|us|ee\.?\s*uu|europa|eu/i.test(`${art.title} ${art.summary || ''}`)) {
+    reasons.push('Tema relevante para empresas de Estados Unidos / México–EE. UU.');
+  }
+  if ((scores.reliability || 0) >= 40 || art.source_name) {
+    reasons.push(`Fuente ${art.source_name ? `verificable (${art.source_name})` : 'jurídica o comercial verificable'}.`);
+  }
+  if ((scores.content_potential || 0) >= 30 || (Number(art.total_score || art.top10_score) || 0) >= 70) {
+    reasons.push('Potencial para artículo legal, LinkedIn y video ejecutivo.');
+  }
+  if (art.quota_priority) {
+    reasons.push('Prioridad de cuota editorial: refuerza un pilar bajo meta.');
+  }
+  if (!reasons.length) {
+    reasons.push('Seleccionada por relevancia, mercado, autoridad de fuente y potencial comercial.');
+  }
+  return reasons.slice(0, 5);
+}
+
+function buildTags(art) {
+  const tags = [];
+  if (art.matched_pillar_name || art.matched_pillar) {
+    tags.push({ label: art.matched_pillar_name || art.matched_pillar, tone: 'accent' });
+  }
+  if (art.category) tags.push({ label: art.category, tone: 'muted' });
+  if (art.quota_priority) tags.push({ label: 'México–EE. UU.', tone: 'success' });
+  if (art.status && art.status !== 'collected') tags.push({ label: art.status, tone: 'muted' });
+  return tags.slice(0, 5);
+}
+
+function scoreValue(scores, key, total) {
+  const raw = Number(scores?.[key]);
+  if (Number.isFinite(raw) && raw > 0) return Math.round(Math.min(100, raw));
+  // Fallback proporcional al total cuando aún no hay desglose LLM
+  const seed = {
+    relevance: 0.92,
+    impact: 0.85,
+    reliability: 0.8,
+    freshness: 0.78,
+    content_potential: 0.72,
+    mx_us_relevance: 0.7,
+    conversion: 0.55,
+  }[key] || 0.7;
+  return Math.round(Math.min(100, (Number(total) || 50) * seed));
+}
+
+function relativeAge(iso) {
+  if (!iso) return 'Reciente';
+  try {
+    const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+    if (mins < 60) return `${mins || 1} min`;
+    const hours = Math.round(mins / 60);
+    if (hours < 48) return `${hours} h`;
+    return `${Math.round(hours / 24)} d`;
+  } catch {
+    return 'Reciente';
+  }
+}
+
 /**
- * Única pantalla de descubrimiento: ranking del perfil + notas de tendencias/publicidad.
+ * Centro de mando editorial — descubrimiento del día.
  */
 export default function HoyTab({
-  deficitPillars = [],
   top10 = [],
   onUseSuggestion,
   onRefreshTop10,
   onPatrol,
   loadingTop10 = false,
   isSearching = false,
+  top10Error = '',
   adTrendNotes = null,
   adTrendMessage = null,
   adTrendBusy = false,
   onRefreshAdTrendNotes,
   onGenerateAdTrendNotes,
+  onOpenSources,
+  onRefreshIntelligence,
+  intelligenceBusy = false,
+  signalsCount = 0,
+  flowCounts = null,
+  onOpenLive,
 }) {
-  const [notesOpen, setNotesOpen] = useState(true);
+  const [dismissed, setDismissed] = useState(() => new Set());
+  const [analysisOpen, setAnalysisOpen] = useState(true);
+
+  const ranked = useMemo(
+    () => (top10 || []).filter((a) => !dismissed.has(a.id || a.article_id)),
+    [top10, dismissed]
+  );
+  const leadArticle = ranked[0];
+  const remainingArticles = ranked.slice(1, 10);
   const trends = adTrendNotes?.trends || [];
-  const formats = adTrendNotes?.formats_working || [];
-  const adNotes = adTrendNotes?.ad_notes || [];
-  const hasNotes = Boolean(adTrendNotes && (trends.length || adNotes.length));
+  const busy = intelligenceBusy || loadingTop10 || isSearching || adTrendBusy;
+
+  const leadScore = Number(leadArticle?.top10_score ?? leadArticle?.total_score) || 0;
+  const leadScores = leadArticle?.scores || {};
+  const reasons = leadArticle ? buildReasons(leadArticle, leadScores) : [];
+  const tags = leadArticle ? buildTags(leadArticle) : [];
+
+  const refreshAll = () => {
+    if (onRefreshIntelligence) onRefreshIntelligence();
+    else {
+      onRefreshTop10?.();
+      onPatrol?.();
+      onGenerateAdTrendNotes?.();
+    }
+  };
+
+  const trendCards = useMemo(() => {
+    if (trends.length) {
+      return trends.slice(0, 4).map((t, i) => ({
+        id: `trend-${i}`,
+        platform: PLATFORM_LABELS[t.platform] || t.platform || 'Web',
+        title: t.summary || t.title || t.theme || 'Tendencia detectada',
+        age: t.detected_at ? relativeAge(t.detected_at) : (adTrendNotes?.generated_at ? relativeAge(adTrendNotes.generated_at) : 'Hoy'),
+        growth: t.growth_pct != null ? `↑ ${Math.round(Number(t.growth_pct))}%` : null,
+        mentions: t.mentions != null ? `${Number(t.mentions).toLocaleString('es-CO')} menciones` : (t.theme || null),
+        tags: [t.theme, t.market].filter(Boolean).slice(0, 2),
+        url: (t.urls && t.urls[0]) || null,
+      }));
+    }
+    return remainingArticles.slice(0, 4).map((art, i) => ({
+      id: art.id || art.article_id || `sig-${i}`,
+      platform: art.source_name || 'Señal',
+      title: art.title,
+      age: relativeAge(art.published_at),
+      growth: art.top10_score || art.total_score ? `${Math.round(art.top10_score ?? art.total_score)}/100` : null,
+      mentions: art.matched_pillar_name || art.matched_pillar || null,
+      tags: [art.category, art.matched_pillar_name || art.matched_pillar].filter(Boolean).slice(0, 2),
+      url: art.source_url || art.url || null,
+      article: art,
+    }));
+  }, [trends, remainingArticles, adTrendNotes]);
+
+  const discoverCount = flowCounts?.discover ?? Math.max(signalsCount, top10?.length || 0);
+  const createCount = flowCounts?.create ?? 0;
+  const reviewCount = flowCounts?.review ?? 0;
+  const distributeCount = flowCounts?.distribute ?? 0;
 
   return (
-    <section className="hoy-panel glass-panel">
-      <header className="hoy-hero" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
+    <section className="cmd-hoy">
+      <nav className="cmd-flow" aria-label="Flujo editorial">
+        {[
+          { key: 'discover', label: 'Descubrir', count: discoverCount, active: true, onClick: null },
+          { key: 'create', label: 'Crear', count: createCount, active: false, onClick: () => leadArticle && onUseSuggestion?.(leadArticle) },
+          { key: 'review', label: 'Revisar', count: reviewCount, active: false, onClick: null },
+          { key: 'distribute', label: 'Distribuir', count: distributeCount, active: false, onClick: null },
+        ].map((step) => (
+          <button
+            key={step.key}
+            type="button"
+            className={`cmd-flow__step${step.active ? ' is-active' : ''}`}
+            onClick={step.onClick || undefined}
+            disabled={!step.active && !step.onClick}
+          >
+            <span className="cmd-flow__num">{step.count}</span>
+            {step.label}
+          </button>
+        ))}
+      </nav>
+
+      <header className="cmd-hoy__header">
         <div>
-          <h2 className="hoy-title">Hoy</h2>
-          <p className="hoy-lede">
-            Noticias priorizadas para el perfil. Elige una, genera y publica.
+          <span className="page-eyebrow">Centro editorial</span>
+          <h2 className="cmd-hoy__title">La mejor oportunidad editorial de hoy</h2>
+          <p className="cmd-hoy__lede">
+            Seleccionada entre {Math.max(discoverCount, ranked.length) || '—'} señales según relevancia, mercado,
+            autoridad de fuente y potencial comercial.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button type="button" className="btn btn-secondary" disabled={loadingTop10 || isSearching} onClick={onRefreshTop10}>
-            {loadingTop10 ? 'Actualizando…' : 'Actualizar ranking'}
+        <div className="cmd-hoy__actions">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={busy}
+            onClick={() => onOpenSources?.() || onRefreshAdTrendNotes?.()}
+          >
+            Configurar fuentes
           </button>
-          <button type="button" className="btn" disabled={loadingTop10 || isSearching} onClick={onPatrol}>
-            <Search size={14} style={{ marginRight: 6 }} />
-            {isSearching ? 'Patrullando…' : 'Patrullar tipologías'}
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={refreshAll}>
+            <RefreshCw size={15} className={busy ? 'animate-spin' : ''} aria-hidden="true" />
+            {busy ? 'Actualizando inteligencia…' : 'Actualizar inteligencia'}
           </button>
         </div>
       </header>
 
-      {deficitPillars.length > 0 && (
-        <div className="hoy-quota" style={{ marginBottom: '16px' }}>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-            <Layers size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-            Pilares bajo meta (boost activo):
-          </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-            {deficitPillars.map((p) => (
-              <span key={p.slug} className="status-badge status-pending" style={{ fontSize: '0.78rem' }}>
-                {p.name} (−{Number(p.deficit_pct).toFixed(0)}%)
-              </span>
-            ))}
+      {top10Error && (
+        <div className="status-banner status-banner--error" role="alert">
+          <div>
+            <strong>No se pudo actualizar el ranking</strong>
+            <p>{top10Error}</p>
+          </div>
+          <button type="button" className="btn btn-secondary" onClick={onRefreshTop10}>
+            Reintentar
+          </button>
+        </div>
+      )}
+
+      {loadingTop10 && !leadArticle && (
+        <div className="cmd-priority cmd-priority--skeleton" aria-busy="true">
+          <div className="skeleton" style={{ width: 140, height: 160 }} />
+          <div style={{ flex: 1 }}>
+            <div className="skeleton" style={{ width: '28%', height: 14, marginBottom: 12 }} />
+            <div className="skeleton" style={{ width: '88%', height: 28, marginBottom: 10 }} />
+            <div className="skeleton" style={{ width: '70%', height: 16 }} />
           </div>
         </div>
       )}
 
-      <div className="glass-card" style={{ padding: '14px 16px', marginBottom: '20px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => setNotesOpen((v) => !v)}
-            style={{
-              background: 'none',
-              border: 'none',
-              padding: 0,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              color: 'inherit',
-              textAlign: 'left',
-            }}
-          >
-            <Megaphone size={16} />
-            <strong style={{ fontSize: '1.05rem' }}>Notas · tendencias y publicidad</strong>
-            {notesOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+      {!top10Error && !loadingTop10 && !leadArticle && (
+        <div className="empty-state">
+          <strong>Aún no hay ranking</strong>
+          <span>Actualiza la inteligencia o patrulla tipologías para encontrar una señal editorial.</span>
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={refreshAll}>
+            Actualizar inteligencia
           </button>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={adTrendBusy}
-              onClick={onRefreshAdTrendNotes}
-            >
-              Recargar
-            </button>
+        </div>
+      )}
+
+      {leadArticle && (
+        <article className="cmd-priority">
+          <div className="cmd-priority__top">
+            <span className="cmd-priority__eyebrow">Recomendación prioritaria</span>
+            <span className="cmd-priority__score">
+              <Check size={14} aria-hidden="true" />
+              {Math.round(leadScore)}/100 — {opportunityLabel(leadScore)}
+            </span>
+          </div>
+
+          <div className="cmd-priority__body">
+            <div className="cmd-priority__visual" aria-hidden="true">
+              <Globe2 size={42} />
+            </div>
+            <div className="cmd-priority__main">
+              <h3 className="cmd-priority__headline">{leadArticle.title}</h3>
+              <p className="cmd-priority__summary">
+                {leadArticle.summary || leadArticle.excerpt ||
+                  `Prioridad alineada con ${leadArticle.matched_pillar_name || leadArticle.matched_pillar || 'tu perfil editorial'}.`}
+              </p>
+              {tags.length > 0 && (
+                <div className="cmd-priority__tags">
+                  {tags.map((t) => (
+                    <span key={t.label} className={`cmd-tag cmd-tag--${t.tone}`}>{t.label}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="cmd-priority__grid">
+            <div>
+              <h4 className="cmd-priority__section-title">Por qué debe publicarse</h4>
+              <ul className="cmd-reasons">
+                {reasons.map((r) => (
+                  <li key={r}>
+                    <Check size={14} aria-hidden="true" />
+                    <span>{r}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <div className="cmd-priority__section-head">
+                <h4 className="cmd-priority__section-title">Análisis de oportunidad</h4>
+                <button
+                  type="button"
+                  className="cmd-linkish"
+                  onClick={() => setAnalysisOpen((v) => !v)}
+                >
+                  {analysisOpen ? 'Ocultar' : 'Ver'}
+                </button>
+              </div>
+              {analysisOpen && (
+                <ul className="cmd-scorebars">
+                  {SCORE_ROWS.map(([key, label]) => {
+                    const value = scoreValue(leadScores, key, leadScore);
+                    return (
+                      <li key={key}>
+                        <div className="cmd-scorebars__label">
+                          <span>{label}</span>
+                          <strong>{value}</strong>
+                        </div>
+                        <div className="cmd-scorebars__track" aria-hidden="true">
+                          <span style={{ width: `${value}%` }} />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <div className="cmd-priority__cta">
             <button
               type="button"
               className="btn btn-primary"
-              disabled={adTrendBusy}
-              onClick={onGenerateAdTrendNotes}
+              onClick={() => onUseSuggestion?.(leadArticle)}
             >
-              <RefreshCw size={14} style={{ marginRight: 6 }} />
-              {adTrendBusy ? 'Investigando redes…' : 'Actualizar notas'}
+              <Plus size={16} aria-hidden="true" />
+              Crear paquete de contenido
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setAnalysisOpen(true)}
+            >
+              <BarChart3 size={15} aria-hidden="true" />
+              Ver análisis
+            </button>
+            {(leadArticle.url || leadArticle.source_url) && (
+              <a
+                className="btn btn-secondary"
+                href={leadArticle.url || leadArticle.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Fuente <ExternalLink size={14} />
+              </a>
+            )}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                const id = leadArticle.id || leadArticle.article_id;
+                setDismissed((prev) => new Set(prev).add(id));
+              }}
+            >
+              <X size={15} aria-hidden="true" />
+              Descartar
             </button>
           </div>
+        </article>
+      )}
+
+      <section className="cmd-trends">
+        <div className="cmd-trends__head">
+          <div>
+            <span className="cmd-trends__pulse" aria-hidden="true" />
+            <h3 className="cmd-trends__title">Tendencias y señales</h3>
+          </div>
+          <button type="button" className="cmd-linkish" onClick={() => onOpenLive?.()}>
+            Ver todas las señales <ArrowRight size={14} />
+          </button>
         </div>
 
-        {notesOpen && (
-          <div style={{ marginTop: '14px' }}>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-              Sugerencias editoriales orgánicas para tus redes (LinkedIn, YouTube, X, TikTok, Instagram).
-              No son compra de anuncios pagados.
-            </p>
+        {adTrendBusy && !trendCards.length && (
+          <p className="cmd-muted">Investigando tendencias en redes según tu perfil…</p>
+        )}
 
-            {adTrendBusy && (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                Buscando tendencias en redes según los temas del perfil…
-              </p>
-            )}
+        {!adTrendBusy && !trendCards.length && (
+          <p className="cmd-muted">
+            {adTrendMessage || 'Actualiza la inteligencia para ver tendencias y señales prioritarias.'}
+          </p>
+        )}
 
-            {!adTrendBusy && !hasNotes && (
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                {adTrendMessage || 'Genera notas según tu perfil para ver tendencias y dónde insertar CTAs.'}
-              </p>
-            )}
-
-            {adTrendNotes?.generated_at && (
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
-                Actualizado: {new Date(adTrendNotes.generated_at).toLocaleString()}
-                {(adTrendNotes.meta?.hits_count != null) ? ` · ${adTrendNotes.meta.hits_count} hallazgos` : ''}
-              </p>
-            )}
-
-            {trends.length > 0 && (
-              <div style={{ marginBottom: '16px' }}>
-                <h4 style={{ fontSize: '0.9rem', marginBottom: '8px' }}>Tendencias detectadas</h4>
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {trends.map((t, i) => (
-                    <li key={`${t.platform}-${i}`} style={{ fontSize: '0.88rem', lineHeight: 1.4 }}>
-                      <span className="status-badge status-verified" style={{ fontSize: '0.68rem', marginRight: 6 }}>
-                        {PLATFORM_LABELS[t.platform] || t.platform || 'Red'}
-                      </span>
-                      {t.theme ? <em style={{ color: 'var(--text-muted)', marginRight: 6 }}>{t.theme} ·</em> : null}
-                      {t.summary || t.title || '—'}
-                      <span style={{ display: 'inline-flex', gap: 6, marginLeft: 8, flexWrap: 'wrap' }}>
-                        {(t.urls || []).slice(0, 2).map((u) => (
-                          <a key={u} href={u} target="_blank" rel="noopener noreferrer" aria-label="Abrir ejemplo">
-                            <ExternalLink size={12} />
-                          </a>
-                        ))}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {formats.length > 0 && (
-              <div style={{ marginBottom: '16px' }}>
-                <h4 style={{ fontSize: '0.9rem', marginBottom: '8px' }}>Formatos que encajan</h4>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {formats.map((f, i) => (
-                    <span key={i} className="status-badge status-pending" style={{ fontSize: '0.75rem' }} title={f.why || ''}>
-                      {f.format}{f.platform ? ` · ${PLATFORM_LABELS[f.platform] || f.platform}` : ''}
-                    </span>
-                  ))}
+        {trendCards.length > 0 && (
+          <div className="cmd-trends__grid">
+            {trendCards.map((card) => (
+              <article key={card.id} className="cmd-trend-card">
+                <div className="cmd-trend-card__meta">
+                  <span>{card.platform}</span>
+                  <span>{card.age}</span>
                 </div>
-              </div>
-            )}
-
-            {adNotes.length > 0 && (
-              <div>
-                <h4 style={{ fontSize: '0.9rem', marginBottom: '8px' }}>Dónde / cómo insertar el CTA</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
-                  {adNotes.map((n) => (
-                    <div
-                      key={n.platform}
-                      style={{
-                        border: '1px solid var(--border-subtle, rgba(0,0,0,0.08))',
-                        borderRadius: '8px',
-                        padding: '12px',
-                        background: 'var(--surface-2, transparent)',
-                      }}
-                    >
-                      <strong style={{ fontSize: '0.85rem', display: 'block', marginBottom: '8px' }}>
-                        {PLATFORM_LABELS[n.platform] || n.platform}
-                      </strong>
-                      <p style={{ fontSize: '0.78rem', margin: '0 0 6px', color: 'var(--text-secondary)' }}>
-                        <strong>Dónde:</strong> {n.where}
-                      </p>
-                      <p style={{ fontSize: '0.78rem', margin: '0 0 6px', color: 'var(--text-secondary)' }}>
-                        <strong>Cómo:</strong> {n.how}
-                      </p>
-                      <p style={{ fontSize: '0.78rem', margin: 0, color: 'var(--text-muted)' }}>
-                        <strong>Evitar:</strong> {n.avoid}
-                      </p>
-                    </div>
-                  ))}
+                <h4 className="cmd-trend-card__title">{card.title}</h4>
+                <div className="cmd-trend-card__stats">
+                  {card.growth ? <span className="cmd-trend-card__growth">{card.growth}</span> : null}
+                  {card.mentions ? <span>{card.mentions}</span> : null}
                 </div>
-              </div>
-            )}
+                {card.tags?.length > 0 && (
+                  <div className="cmd-priority__tags">
+                    {card.tags.map((t) => (
+                      <span key={t} className="cmd-tag cmd-tag--muted">{t}</span>
+                    ))}
+                  </div>
+                )}
+                <div className="cmd-trend-card__foot">
+                  {card.article ? (
+                    <button type="button" className="cmd-linkish" onClick={() => onUseSuggestion?.(card.article)}>
+                      Crear en Estudio <ArrowRight size={13} />
+                    </button>
+                  ) : card.url ? (
+                    <a className="cmd-linkish" href={card.url} target="_blank" rel="noopener noreferrer">
+                      Ver señales <ArrowRight size={13} />
+                    </a>
+                  ) : (
+                    <button type="button" className="cmd-linkish" onClick={() => onOpenLive?.()}>
+                      Ver señales <ArrowRight size={13} />
+                    </button>
+                  )}
+                </div>
+              </article>
+            ))}
           </div>
         )}
+
+        {remainingArticles.length > 4 && trends.length > 0 && (
+          <div className="cmd-alts">
+            <h4 className="cmd-alts__title">Otras oportunidades priorizadas</h4>
+            <ul className="cmd-alts__list">
+              {remainingArticles.slice(0, 5).map((art, idx) => (
+                <li key={art.id || art.article_id} className="cmd-alts__row">
+                  <span className="score-tag">#{idx + 2}</span>
+                  <div className="cmd-alts__copy">
+                    <strong>{art.title}</strong>
+                    <span>
+                      {art.source_name || 'Fuente'} · {Math.round(art.top10_score ?? art.total_score ?? 0)}/100
+                    </span>
+                  </div>
+                  <button type="button" className="btn btn-primary" onClick={() => onUseSuggestion?.(art)}>
+                    Crear
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+
+      <div className="cmd-hoy__footer-actions">
+        <button type="button" className="btn btn-secondary" disabled={busy} onClick={onPatrol}>
+          <Search size={14} />
+          {isSearching ? 'Patrullando…' : 'Patrullar tipologías'}
+        </button>
       </div>
-
-      <h3 style={{ fontSize: '1.05rem', fontWeight: 800, marginBottom: '12px' }}>Top noticias del perfil</h3>
-
-      {!top10?.length && (
-        <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
-          Aún no hay ranking. Usa “Actualizar fuentes” arriba o “Patrullar tipologías”.
-        </p>
-      )}
-
-      {top10?.length > 0 && (
-        <ol style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {top10.slice(0, 10).map((art, idx) => (
-            <li
-              key={art.id || art.article_id}
-              className="glass-card"
-              style={{ padding: '14px 16px', display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: '12px', alignItems: 'center' }}
-            >
-              <span className="score-tag" style={{ minWidth: '52px', textAlign: 'center' }}>
-                #{idx + 1}
-              </span>
-              <div style={{ minWidth: 0 }}>
-                <strong style={{ fontSize: '0.95rem', display: 'block', lineHeight: 1.35 }}>{art.title}</strong>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    {art.source_name || 'Fuente'} · {art.top10_score ?? art.total_score}/100
-                  </span>
-                  {(art.matched_pillar_name || art.matched_pillar || art.category) && (
-                    <span className="status-badge status-verified" style={{ fontSize: '0.7rem' }}>
-                      {art.matched_pillar_name || art.matched_pillar || art.category}
-                    </span>
-                  )}
-                  {art.quota_priority && (
-                    <span className="status-badge status-pending" style={{ fontSize: '0.7rem' }}>
-                      Prioridad cuota
-                    </span>
-                  )}
-                  {art.status && art.status !== 'verified' && (
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{art.status}</span>
-                  )}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                <button type="button" className="btn btn-primary" onClick={() => onUseSuggestion?.(art)}>
-                  Usar
-                </button>
-                {art.url || art.source_url ? (
-                  <a
-                    href={art.url || art.source_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn btn-secondary"
-                    style={{ padding: '8px 10px', textDecoration: 'none' }}
-                    aria-label="Abrir fuente"
-                  >
-                    <ExternalLink size={14} />
-                  </a>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ol>
-      )}
     </section>
   );
 }

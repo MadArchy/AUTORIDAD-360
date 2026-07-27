@@ -33,25 +33,23 @@ export default function FormatPreview({
 
   if (format === 'linkedin') {
     return (
-      <div style={frameStyle}>
+      <div className="format-preview" style={frameStyle}>
         <div style={labelStyle}>Vista previa · LinkedIn</div>
-        <div style={liCard}>
-          <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+        <div className="format-preview__surface-light" style={liCard}>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 12, minWidth: 0 }}>
             <div style={avatar}>{initials(authorName)}</div>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#111' }}>{authorName}</div>
-              <div style={{ fontSize: '0.72rem', color: '#666' }}>{authorTitle}</div>
+            <div style={authorMeta}>
+              <div style={authorNameStyle}>{authorName}</div>
+              <div style={authorTitleStyle}>{authorTitle}</div>
               <div style={{ fontSize: '0.7rem', color: '#888' }}>Ahora · Público</div>
             </div>
           </div>
-          <div style={{ fontSize: '0.88rem', color: '#1a1a1a', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-            {linkedinBody || 'El post aparecerá aquí…'}
-          </div>
+          <div style={bodyText}>{linkedinBody || 'El post aparecerá aquí…'}</div>
           {cover && (
             <img
               src={cover}
               alt="Creatividad"
-              style={{ width: '100%', borderRadius: 8, marginTop: 12, display: 'block' }}
+              style={{ width: '100%', maxWidth: '100%', borderRadius: 8, marginTop: 12, display: 'block' }}
             />
           )}
           <div style={liActions}>
@@ -66,7 +64,7 @@ export default function FormatPreview({
 
   if (format === 'carousel') {
     return (
-      <div style={frameStyle}>
+      <div className="format-preview" style={frameStyle}>
         <div style={labelStyle}>Vista previa · Carrusel</div>
         <div
           style={{
@@ -74,6 +72,8 @@ export default function FormatPreview({
             padding: currentImg ? 0 : 20,
             overflow: 'hidden',
             position: 'relative',
+            width: '100%',
+            maxWidth: 280,
           }}
         >
           {currentImg ? (
@@ -136,10 +136,10 @@ export default function FormatPreview({
               <div style={{ fontSize: '0.7rem', color: 'var(--accent-cyan)', fontWeight: 800, marginBottom: 8 }}>
                 {slideIdx + 1} / {safeSlides.length || 1}
               </div>
-              <h4 style={{ margin: '0 0 10px', fontSize: '1.05rem', fontWeight: 800, color: '#fff' }}>
+              <h4 style={{ ...wrapText, margin: '0 0 10px', fontSize: '1.05rem', fontWeight: 800, color: '#fff' }}>
                 {current.title || `Slide ${slideIdx + 1}`}
               </h4>
-              <p style={{ margin: 0, fontSize: '0.88rem', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>
+              <p style={{ ...wrapText, margin: 0, fontSize: '0.88rem', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5, overflow: 'auto' }}>
                 {current.content || current.text || '—'}
               </p>
               <p style={{ marginTop: 'auto', paddingTop: 12, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
@@ -178,19 +178,19 @@ export default function FormatPreview({
 
   if (format === 'newsletter') {
     return (
-      <div style={frameStyle}>
+      <div className="format-preview" style={frameStyle}>
         <div style={labelStyle}>Vista previa · Newsletter</div>
-        <div style={mailCard}>
-          <div style={{ borderBottom: '1px solid #e5e5e5', paddingBottom: 10, marginBottom: 12 }}>
-            <div style={{ fontSize: '0.72rem', color: '#666' }}>De: {authorName}</div>
-            <div style={{ fontWeight: 700, fontSize: '1rem', color: '#111', marginTop: 4 }}>
+        <div className="format-preview__surface-light" style={mailCard}>
+          <div style={{ borderBottom: '1px solid #e5e5e5', paddingBottom: 10, marginBottom: 12, minWidth: 0 }}>
+            <div style={{ ...wrapText, fontSize: '0.72rem', color: '#666' }}>De: {authorName}</div>
+            <div style={{ ...wrapText, fontWeight: 700, fontSize: '1rem', color: '#111', marginTop: 4 }}>
               Autoridad 360 — Edición
             </div>
           </div>
           {cover && (
-            <img src={cover} alt="Portada" style={{ width: '100%', borderRadius: 6, marginBottom: 12 }} />
+            <img src={cover} alt="Portada" style={{ width: '100%', maxWidth: '100%', borderRadius: 6, marginBottom: 12 }} />
           )}
-          <div style={{ fontSize: '0.88rem', color: '#222', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+          <div style={{ ...bodyText, color: '#222', maxHeight: 'none' }}>
             {String(text || '').trim() || 'El cuerpo del newsletter aparecerá aquí…'}
           </div>
         </div>
@@ -199,16 +199,25 @@ export default function FormatPreview({
   }
 
   return (
-    <div style={frameStyle}>
+    <div className="format-preview" style={frameStyle}>
       <div style={labelStyle}>Vista previa · Teleprompter</div>
       <div style={teleCard}>
         <div style={{ fontSize: '0.7rem', color: '#6ee7b7', marginBottom: 8, letterSpacing: '0.08em' }}>
           EN VIVO · GUION
         </div>
         {cover && (
-          <img src={cover} alt="Cover" style={{ width: '100%', borderRadius: 8, marginBottom: 12 }} />
+          <img src={cover} alt="Cover" style={{ width: '100%', maxWidth: '100%', borderRadius: 8, marginBottom: 12 }} />
         )}
-        <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.92rem', lineHeight: 1.7, color: '#ecfdf5', whiteSpace: 'pre-wrap' }}>
+        <div
+          style={{
+            ...bodyText,
+            maxHeight: 'none',
+            fontFamily: 'ui-monospace, monospace',
+            fontSize: '0.92rem',
+            lineHeight: 1.7,
+            color: '#ecfdf5',
+          }}
+        >
           {String(text || '').trim() || 'El guion aparecerá aquí…'}
         </div>
       </div>
@@ -225,6 +234,12 @@ function initials(name) {
     .join('') || 'JV';
 }
 
+const wrapText = {
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word',
+  minWidth: 0,
+};
+
 const frameStyle = {
   background: 'rgba(0,0,0,0.25)',
   borderRadius: 12,
@@ -232,6 +247,10 @@ const frameStyle = {
   border: '1px solid rgba(255,255,255,0.1)',
   height: '100%',
   minHeight: 280,
+  minWidth: 0,
+  maxWidth: '100%',
+  overflow: 'hidden',
+  boxSizing: 'border-box',
 };
 
 const labelStyle = {
@@ -245,14 +264,47 @@ const labelStyle = {
 
 const liCard = {
   background: '#fff',
+  color: '#1a1a1a',
   borderRadius: 10,
   padding: 16,
   boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+  minWidth: 0,
+  maxWidth: '100%',
+  maxHeight: 420,
+  overflow: 'auto',
+  boxSizing: 'border-box',
+};
+
+const authorMeta = {
+  minWidth: 0,
+  flex: 1,
+};
+
+const authorNameStyle = {
+  ...wrapText,
+  fontWeight: 700,
+  fontSize: '0.92rem',
+  color: '#111',
+};
+
+const authorTitleStyle = {
+  ...wrapText,
+  fontSize: '0.72rem',
+  color: '#666',
+};
+
+const bodyText = {
+  ...wrapText,
+  fontSize: '0.88rem',
+  color: '#1a1a1a',
+  lineHeight: 1.55,
+  whiteSpace: 'pre-wrap',
 };
 
 const liActions = {
   display: 'flex',
-  gap: 16,
+  flexWrap: 'wrap',
+  gap: 12,
   marginTop: 14,
   paddingTop: 12,
   borderTop: '1px solid #eee',
@@ -289,11 +341,15 @@ const carouselPhone = {
 
 const mailCard = {
   background: '#fafafa',
+  color: '#1a1a1a',
   borderRadius: 8,
   padding: 16,
   border: '1px solid #e8e8e8',
   maxHeight: 360,
   overflow: 'auto',
+  minWidth: 0,
+  maxWidth: '100%',
+  boxSizing: 'border-box',
 };
 
 const teleCard = {
@@ -303,4 +359,7 @@ const teleCard = {
   border: '1px solid rgba(16,185,129,0.35)',
   maxHeight: 360,
   overflow: 'auto',
+  minWidth: 0,
+  maxWidth: '100%',
+  boxSizing: 'border-box',
 };

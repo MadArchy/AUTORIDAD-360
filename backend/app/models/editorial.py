@@ -75,7 +75,9 @@ class NewsArticle(Base):
     )
     category_id: Mapped[int] = mapped_column(ForeignKey("news_categories.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
-    source_url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    # 767 caracteres + organization_id caben en un índice UNIQUE utf8mb4 de MySQL
+    # (límite InnoDB: 3072 bytes) y siguen cubriendo URLs editoriales normales.
+    source_url: Mapped[str] = mapped_column(String(767), nullable=False)
     source_name: Mapped[str] = mapped_column(String(256), nullable=False)
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     full_text: Mapped[str] = mapped_column(Text, nullable=False)

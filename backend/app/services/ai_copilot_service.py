@@ -19,12 +19,16 @@ def refine_article_content(
     instruction: str,
     target_field: str = "full_text",
     provider_mode: str = "auto",
+    organization_id: int | None = None,
 ) -> dict[str, Any]:
     """
     Refina o interactúa con el contenido de una noticia/artículo mediante un prompt de usuario.
     Permite cambiar tono, corregir estilo, generar resúmenes, adaptar disclaimers, etc.
     """
-    article = db.query(NewsArticle).filter_by(id=article_id).first()
+    query = db.query(NewsArticle).filter(NewsArticle.id == article_id)
+    if organization_id is not None:
+        query = query.filter(NewsArticle.organization_id == organization_id)
+    article = query.first()
     if not article:
         raise ValueError(f"Artículo con ID {article_id} no encontrado")
 
@@ -35,7 +39,7 @@ def refine_article_content(
     Tu objetivo es iterar, perfeccionar o adaptar el contenido de la siguiente noticia según la instrucción del usuario.
 
     TÍTULO: {article.title}
-    FUENTE: {article.source_name} ({article.url})
+    FUENTE: {article.source_name} ({article.source_url})
     CAMPO OBJETIVO ({target_field}):
     ---
     {current_text}

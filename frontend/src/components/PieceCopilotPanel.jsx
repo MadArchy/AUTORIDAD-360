@@ -66,6 +66,9 @@ export default function PieceCopilotPanel({
           {providerMode === 'local' ? 'Ollama' : providerMode === 'cloud' ? 'API key' : 'Auto'}
         </span>
       </div>
+      <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.78rem', lineHeight: 1.45 }}>
+        1. Genera una propuesta. 2. Revísala. 3. Aplícala al editor. 4. Guarda la pieza para hacerla permanente.
+      </p>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         {QUICK.map((q) => (
@@ -136,7 +139,7 @@ export default function PieceCopilotPanel({
             onClick={() => {
               onApply?.(result.refined_content);
               setResult(null);
-              notify?.('Sugerencia aplicada al editor. Guarda para persistir.', 'success');
+              notify?.('Sugerencia aplicada al editor. El último paso es Guardar la pieza.', 'success');
             }}
           >
             <Check size={14} style={{ marginRight: 6 }} /> Aplicar al editor

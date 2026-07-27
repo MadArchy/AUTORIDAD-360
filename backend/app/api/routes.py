@@ -393,17 +393,31 @@ def top10(
         {
             "rank": i,
             "article_id": s.article.id,
+            "id": s.article.id,
             "title": s.article.title,
             "source_url": s.article.source_url,
             "source_name": s.article.source_name,
             "status": s.article.status,
+            "category": s.article.category,
+            "summary": s.article.summary or s.article.excerpt,
+            "excerpt": s.article.excerpt or s.article.summary,
+            "published_at": s.article.published_at.isoformat() if s.article.published_at else None,
             "total_score": s.total_score,
+            "top10_score": s.total_score,
             "base_score": s.base_score,
             "quota_boost": s.quota_boost,
             "matched_pillar": s.matched_pillar,
             "matched_pillar_name": s.matched_pillar_name,
             "quota_priority": bool(s.quota_boost and s.quota_boost > 1.0),
-            "summary": s.article.summary or s.article.excerpt,
+            "scores": {
+                "relevance": float(s.article.score_relevance or 0),
+                "impact": float(s.article.score_impact or 0),
+                "reliability": float(s.article.score_reliability or 0),
+                "freshness": float(s.article.score_freshness or 0),
+                "content_potential": float(s.article.score_content_potential or 0),
+                "mx_us_relevance": float(s.article.score_mx_us_relevance or 0),
+                "conversion": float(s.article.score_conversion or 0),
+            },
         }
         for i, s in enumerate(scored, start=1)
     ]
@@ -1676,6 +1690,10 @@ def copilot_refine_piece_route(
         )
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, f"Copiloto no disponible: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(500, f"Error inesperado del copiloto: {exc}") from exc
     except Exception as exc:
         raise HTTPException(500, str(exc)) from exc
 
@@ -1737,12 +1755,15 @@ def copilot_refine_article_route(
             instruction=req.instruction,
             target_field=req.target_field,
             provider_mode=req.provider_mode,
+            organization_id=ctx.org_id,
         )
         return res
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, f"Copiloto no disponible: {exc}") from exc
     except Exception as exc:
-        raise HTTPException(500, str(exc)) from exc
+        raise HTTPException(500, f"Error inesperado del copiloto: {exc}") from exc
 
 
 @router.post("/blog/{post_id}/copilot")

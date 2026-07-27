@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 import litellm
 from litellm import completion
 from app.models.ai_providers import AIProvider, AIUsageLog
-from app.services.crypto_keys import decrypt_secret
+from app.services.crypto_keys import decrypt_secret_with_rotation, encrypt_secret
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +177,11 @@ class AIGatewayService:
         """Llama a proveedores cloud (OpenAI/Anthropic) utilizando LiteLLM."""
         api_key = None
         if provider.encrypted_api_key:
-            api_key = decrypt_secret(provider.encrypted_api_key)
+            api_key, needs_reencrypt = decrypt_secret_with_rotation(provider.encrypted_api_key)
+            if needs_reencrypt:
+                provider.encrypted_api_key = encrypt_secret(api_key)
+                self.db.add(provider)
+                self.db.commit()
         else:
             # Fallback a entorno para local dev
             env_key = f"{provider.provider_type.upper()}_API_KEY"

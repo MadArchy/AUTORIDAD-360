@@ -5,6 +5,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: autoridad360-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: autoridad360
       POSTGRES_USER: autoridad
@@ -22,8 +23,14 @@ services:
   redis:
     image: redis:7-alpine
     container_name: autoridad360-redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   autoridad_pg_data:

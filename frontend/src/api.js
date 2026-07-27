@@ -138,6 +138,30 @@ export async function getHealth() {
   return res.json();
 }
 
+function readableApiError(status, body) {
+  let detail = body;
+  try {
+    const parsed = JSON.parse(body);
+    detail = Array.isArray(parsed?.detail)
+      ? parsed.detail.map((item) => item.msg || String(item)).join(', ')
+      : parsed?.detail || parsed?.message || body;
+  } catch {
+    /* non-JSON response */
+  }
+  const text = String(detail || '').replace(/^Error:\s*/i, '');
+  if (/ENCRYPTION_KEY|Cannot decrypt API key/i.test(text)) {
+    return (
+      'La API key cloud está cifrada con otra clave del servidor. ' +
+      'Ve a Inteligencia Artificial, pega de nuevo tu API key en el proveedor OpenAI y guarda. ' +
+      'No hace falta aprobar nada más: solo re-cifrar la key.'
+    );
+  }
+  const fallback = status >= 500
+    ? 'El servicio no está disponible temporalmente. Intenta de nuevo.'
+    : `Solicitud no disponible (${status})`;
+  return text || fallback;
+}
+
 export async function api(path, options = {}) {
   const token = getStoredToken();
   const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
@@ -184,7 +208,10 @@ export async function api(path, options = {}) {
       }
       clearBadToken();
     }
-    throw new Error(detail || `API ${res.status}`);
+    const error = new Error(readableApiError(res.status, detail));
+    error.status = res.status;
+    error.requestId = res.headers.get('X-Request-ID') || null;
+    throw error;
   }
   if (res.status === 204) return null;
   return res.json();

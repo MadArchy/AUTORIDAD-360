@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Zap, Cpu, AlertTriangle, DollarSign, Sparkles, Send, ChevronDown, ChevronUp, KeyRound } from 'lucide-react';
+import { RefreshCw, Zap, Cpu, AlertTriangle, DollarSign, ChevronDown, ChevronUp, KeyRound, Trash2 } from 'lucide-react';
 import { api } from '../api';
 
 const PROVIDER_PRESETS = {
@@ -190,15 +190,13 @@ export default function AIGatewayTab({
   isBusy,
   aiUsageStats,
   aiProviders,
+  aiStatsError = '',
   newProvider,
   setNewProvider,
-  testPrompt,
-  setTestPrompt,
-  testResult,
   onRefresh,
   onCreateProvider,
   onUpdateProvider,
-  onRunTest,
+  onRemoveProvider,
   embedded = false,
 }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -207,6 +205,11 @@ export default function AIGatewayTab({
   const [draftModels, setDraftModels] = useState({});
   const [savingProviderId, setSavingProviderId] = useState(null);
   const [createPickerOpen, setCreatePickerOpen] = useState(false);
+  const [keyDrafts, setKeyDrafts] = useState({});
+  const [savingKeyId, setSavingKeyId] = useState(null);
+  const brokenCloudKeys = (aiProviders || []).filter(
+    (p) => !p.is_local && p.has_api_key && p.key_ok === false
+  );
   const preset = PROVIDER_PRESETS[newProvider.provider_type] || PROVIDER_PRESETS.openai;
   const alreadyHasType = (aiProviders || []).some(
     (p) => (p.provider_type || '').toLowerCase() === newProvider.provider_type
@@ -332,13 +335,30 @@ export default function AIGatewayTab({
     }
   };
 
+  const saveProviderKey = async (provider) => {
+    const key = (keyDrafts[provider.id] || '').trim();
+    if (!key || !onUpdateProvider) return;
+    setSavingKeyId(provider.id);
+    try {
+      await onUpdateProvider(provider.id, { api_key: key });
+      setKeyDrafts((prev) => {
+        const copy = { ...prev };
+        delete copy[provider.id];
+        return copy;
+      });
+    } finally {
+      setSavingKeyId(null);
+    }
+  };
+
   const body = (
     <>
       {!embedded && (
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+      <div className="page-header">
         <div>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>AI Gateway & Métricas de Consumo (Fase 5)</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+          <span className="page-eyebrow">Infraestructura editorial</span>
+          <h2 className="page-title">Inteligencia artificial</h2>
+          <p className="page-description">
             Capa agnóstica de IA con fallback automático (Ollama ➔ OpenAI ➔ Anthropic) y registro de latencia/costos.
           </p>
         </div>
@@ -355,14 +375,38 @@ export default function AIGatewayTab({
         </div>
       )}
 
+      {aiStatsError && (
+        <div className="status-banner status-banner--error" role="alert" style={{ marginBottom: 16 }}>
+          <div>
+            <strong>No se pudieron cargar los proveedores</strong>
+            <p>{aiStatsError}</p>
+          </div>
+          <button type="button" className="btn btn-secondary" onClick={onRefresh}>
+            Reintentar
+          </button>
+        </div>
+      )}
+
+      {brokenCloudKeys.length > 0 && (
+        <div className="status-banner status-banner--warning" role="status" style={{ marginBottom: 16 }}>
+          <div>
+            <strong>API key ilegible (ENCRYPTION_KEY)</strong>
+            <p>
+              La key de {brokenCloudKeys.map((p) => p.name).join(', ')} se guardó con otra clave de cifrado.
+              No hay que aprobar nada: pégala de nuevo abajo y guárdala para re-cifrarla con la clave actual.
+            </p>
+          </div>
+        </div>
+      )}
+
       {aiUsageStats && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px', marginBottom: '28px' }}>
-          <div className="glass-card" style={{ padding: '18px', textAlign: 'center' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))', gap: '16px', marginBottom: '28px' }}>
+          <div className="editorial-card" style={{ padding: '18px', textAlign: 'center' }}>
             <Zap size={24} style={{ color: 'var(--accent-cyan)', margin: '0 auto 8px auto' }} />
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>PETICIONES TOTALES</span>
             <p style={{ fontSize: '1.5rem', fontWeight: 800, margin: '4px 0' }}>{aiUsageStats.summary?.total_requests ?? 0}</p>
           </div>
-          <div className="glass-card" style={{ padding: '18px', textAlign: 'center' }}>
+          <div className="editorial-card" style={{ padding: '18px', textAlign: 'center' }}>
             <Cpu size={24} style={{ color: '#10B981', margin: '0 auto 8px auto' }} />
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>% LOCAL VS PAGO</span>
             <p style={{ fontSize: '1.5rem', fontWeight: 800, margin: '4px 0', color: '#10B981' }}>{aiUsageStats.summary?.local_pct ?? 0}%</p>
@@ -370,12 +414,12 @@ export default function AIGatewayTab({
               local {aiUsageStats.summary?.local_requests ?? 0} / pago {aiUsageStats.summary?.paid_requests ?? 0}
             </p>
           </div>
-          <div className="glass-card" style={{ padding: '18px', textAlign: 'center' }}>
+          <div className="editorial-card" style={{ padding: '18px', textAlign: 'center' }}>
             <AlertTriangle size={24} style={{ color: 'var(--accent-purple)', margin: '0 auto 8px auto' }} />
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>FALLIDOS</span>
             <p style={{ fontSize: '1.5rem', fontWeight: 800, margin: '4px 0', color: 'var(--accent-purple)' }}>{aiUsageStats.summary?.failed_requests ?? 0}</p>
           </div>
-          <div className="glass-card" style={{ padding: '18px', textAlign: 'center' }}>
+          <div className="editorial-card" style={{ padding: '18px', textAlign: 'center' }}>
             <DollarSign size={24} style={{ color: '#10B981', margin: '0 auto 8px auto' }} />
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>COSTO EST. (USD)</span>
             <p style={{ fontSize: '1.5rem', fontWeight: 800, margin: '4px 0', color: '#10B981' }}>${aiUsageStats.summary?.total_cost_usd ?? '0.0000'}</p>
@@ -383,11 +427,12 @@ export default function AIGatewayTab({
         </div>
       )}
 
-      <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '8px' }}>Conectar proveedor</h3>
+      <span className="section-eyebrow">Paso 1</span>
+      <h3 className="section-title" style={{ marginTop: 4, marginBottom: '8px' }}>Conectar proveedor</h3>
       <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '12px' }}>
         Elige proveedor, modelo y API key. La URL se configura sola.
       </p>
-      <div className="glass-card" style={{ padding: '20px', marginBottom: '28px' }}>
+      <div className="editorial-card" style={{ padding: '20px', marginBottom: '28px' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
           {Object.entries(PROVIDER_PRESETS).map(([type, p]) => {
             const active = newProvider.provider_type === type;
@@ -400,7 +445,7 @@ export default function AIGatewayTab({
                 type="button"
                 className={active ? 'btn btn-primary' : 'btn btn-secondary'}
                 onClick={() => selectPreset(type)}
-                style={{ minWidth: 120 }}
+                style={{ flex: '1 1 120px', minWidth: 0 }}
               >
                 {p.label}
                 {connected ? ' · ok' : ''}
@@ -414,10 +459,8 @@ export default function AIGatewayTab({
           {alreadyHasType ? ' · Ya tienes uno de este tipo; puedes agregar otro modelo o actualizar la key.' : ''}
         </p>
 
-        <div style={{ marginBottom: '12px' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
-            Modelo
-          </span>
+        <div className="form-field" style={{ marginBottom: '12px' }}>
+          <span>Modelo</span>
           <ModelListPicker
             options={modelOptions}
             value={customModel ? '' : newProvider.model_name}
@@ -438,7 +481,7 @@ export default function AIGatewayTab({
         </div>
 
         {preset.needsKey ? (
-          <label style={{ display: 'block', marginBottom: '12px' }}>
+          <label className="form-field" style={{ marginBottom: '12px' }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
               <KeyRound size={14} /> API key
             </span>
@@ -477,7 +520,7 @@ export default function AIGatewayTab({
             style={{
               marginTop: '16px',
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))',
               gap: '12px',
               paddingTop: '14px',
               borderTop: '1px solid rgba(255,255,255,0.08)',
@@ -512,7 +555,7 @@ export default function AIGatewayTab({
         )}
       </div>
 
-      <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <h3 className="section-title" style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
         <Cpu size={20} style={{ color: 'var(--accent-cyan)' }} /> Proveedores de IA Registrados y Cadena de Fallback
       </h3>
 
@@ -524,7 +567,7 @@ export default function AIGatewayTab({
           const isCustom = draftModels[`${p.id}__custom`] === true;
           const isOpen = draftModels[`${p.id}__open`] === true;
           return (
-            <div key={p.id} className="glass-card" style={{ padding: '20px', overflow: 'visible' }}>
+            <div key={p.id} className="editorial-card" style={{ padding: '20px', overflow: 'visible' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
                 <span className="score-tag">PRIORIDAD #{p.priority}</span>
                 <span className={`status-badge ${p.is_active ? 'status-verified' : 'status-pending'}`}>
@@ -577,6 +620,39 @@ export default function AIGatewayTab({
                 {dirty ? ` → ${selected}` : ''}
               </p>
               <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 12 }}>Base URL: {p.base_url}</p>
+              {!p.is_local && (
+                <div style={{ marginBottom: 12 }}>
+                  {p.has_api_key && p.key_ok === false ? (
+                    <p style={{ fontSize: '0.78rem', color: 'var(--accent-amber)', marginBottom: 8 }}>
+                      Key guardada pero ilegible — pégala de nuevo para reactivar el motor cloud.
+                    </p>
+                  ) : (
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 6 }}>
+                      API key {p.has_api_key ? `(${p.key_hint || '••••'})` : 'no configurada'}
+                    </p>
+                  )}
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    placeholder="Pegar API key para actualizar / re-cifrar"
+                    value={keyDrafts[p.id] || ''}
+                    onChange={(e) =>
+                      setKeyDrafts((prev) => ({ ...prev, [p.id]: e.target.value }))
+                    }
+                    style={{ ...fieldStyle, width: '100%', marginBottom: 8 }}
+                  />
+                  <button
+                    type="button"
+                    className={p.key_ok === false ? 'btn btn-primary' : 'btn btn-secondary'}
+                    style={{ width: '100%', marginBottom: 8 }}
+                    disabled={!onUpdateProvider || !(keyDrafts[p.id] || '').trim() || savingKeyId === p.id}
+                    onClick={() => saveProviderKey(p)}
+                  >
+                    <KeyRound size={14} />
+                    {savingKeyId === p.id ? 'Guardando key…' : 'Guardar API key'}
+                  </button>
+                </div>
+              )}
               <button
                 type="button"
                 className="btn btn-primary"
@@ -586,41 +662,21 @@ export default function AIGatewayTab({
               >
                 {savingProviderId === p.id ? 'Guardando…' : dirty ? 'Actualizar modelo' : 'Sin cambios'}
               </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ width: '100%', marginTop: 8 }}
+                disabled={!onRemoveProvider}
+                onClick={() => onRemoveProvider(p)}
+              >
+                <Trash2 size={14} />
+                {p.is_local && p.provider_type === 'ollama' ? 'Desactivar Ollama local' : 'Eliminar proveedor'}
+              </button>
             </div>
           );
         })}
       </div>
 
-      <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <Sparkles size={20} style={{ color: 'var(--accent-purple)' }} /> Probador Interactivo del AI Gateway
-      </h3>
-
-      <div className="glass-card" style={{ padding: '20px', marginBottom: '28px' }}>
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>Prompt de Prueba:</label>
-          <textarea
-            value={testPrompt}
-            onChange={(e) => setTestPrompt(e.target.value)}
-            rows={3}
-            style={{ width: '100%', padding: '12px', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', color: '#FFF', border: '1px solid rgba(255,255,255,0.15)', fontSize: '0.9rem' }}
-          />
-        </div>
-        <button className="btn btn-primary" onClick={onRunTest} disabled={loading || isBusy('ai-test')}>
-          <Send size={16} /> {isBusy('ai-test') ? 'Probando…' : 'Ejecutar vía Gateway'}
-        </button>
-        {testResult && (
-          <div style={{ marginTop: '20px', background: 'rgba(0,0,0,0.4)', padding: '18px', borderRadius: '10px', borderLeft: '4px solid var(--accent-cyan)' }}>
-            <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', fontSize: '0.85rem', flexWrap: 'wrap' }}>
-              <span><strong>Proveedor Usado:</strong> {testResult.provider} ({testResult.model})</span>
-              <span><strong>Fallback:</strong> {testResult.fallback_triggered ? 'Sí (conmutado)' : 'No (primario)'}</span>
-              <span><strong>Tokens:</strong> {testResult.total_tokens}</span>
-              <span><strong>Latencia:</strong> {testResult.latency_ms} ms</span>
-              <span><strong>Costo:</strong> ${testResult.estimated_cost_usd} USD</span>
-            </div>
-            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-sans)', fontSize: '0.92rem', lineHeight: 1.6 }}>{testResult.text}</pre>
-          </div>
-        )}
-      </div>
     </>
   );
 

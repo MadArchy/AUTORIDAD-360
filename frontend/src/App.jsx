@@ -83,12 +83,16 @@ export default function App() {
   }, [activeTab]);
   const [articles, setArticles] = useState([]);
   const [top10, setTop10] = useState([]);
+  const [top10Error, setTop10Error] = useState('');
+  const [articlesError, setArticlesError] = useState('');
+  const [profileError, setProfileError] = useState('');
   const [categories, setCategories] = useState([]);
   const [profile, setProfile] = useState(null);
   const [report, setReport] = useState(null);
   const [multiFormatContent, setMultiFormatContent] = useState(null);
   const [aiProviders, setAiProviders] = useState([]);
   const [aiUsageStats, setAiUsageStats] = useState(null);
+  const [aiStatsError, setAiStatsError] = useState('');
   const [testPrompt, setTestPrompt] = useState('Analiza las implicaciones legales y de gobernanza de la IA generativa.');
   const [testResult, setTestResult] = useState(null);
   const [selectedFormatSubTab, setSelectedFormatSubTab] = useState('linkedin');
@@ -107,6 +111,31 @@ export default function App() {
   const searchDebounceRef = useRef(null);
   const [selectedArticleForApproval, setSelectedArticleForApproval] = useState(null);
   const [approvedArticleIds, setApprovedArticleIds] = useState(new Set());
+  const [workedArticleIds, setWorkedArticleIds] = useState(() => {
+    try {
+      const raw = localStorage.getItem('a360_worked_articles');
+      const ids = raw ? JSON.parse(raw) : [];
+      return new Set(Array.isArray(ids) ? ids.map(Number).filter(Number.isFinite) : []);
+    } catch {
+      return new Set();
+    }
+  });
+
+  const markArticleWorked = (articleId) => {
+    const id = Number(articleId);
+    if (!Number.isFinite(id)) return;
+    setWorkedArticleIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      try {
+        localStorage.setItem('a360_worked_articles', JSON.stringify([...next]));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   // Fase 6 — Multiempresa
   const [orgs, setOrgs] = useState([]);
@@ -274,6 +303,7 @@ export default function App() {
     fetchProfile();
     fetchAdTrendNotes();
     refreshPilotSources();
+    ensureAiProviders({ force: true });
   }, [authUser]);
 
   useEffect(() => {
@@ -382,6 +412,7 @@ export default function App() {
         'warn'
       );
     }
+    markArticleWorked(articleId);
     setMultiFormatContent(null);
     setMultiFormatError('');
     setSelectedArticleForApproval({
@@ -410,6 +441,27 @@ export default function App() {
     () => [...packagePieces, ...livePieces],
     [packagePieces, livePieces]
   );
+
+  const workedArticleIdSet = useMemo(() => {
+    const ids = new Set(workedArticleIds);
+    for (const pkg of contentPackages || []) {
+      const id = Number(pkg.article_id ?? pkg.article?.id);
+      if (Number.isFinite(id)) ids.add(id);
+    }
+    for (const piece of allPieces) {
+      const id = Number(piece.article_id);
+      if (Number.isFinite(id)) ids.add(id);
+    }
+    const currentId = Number(multiFormatContent?.article_id ?? selectedArticleForApproval?.id);
+    if (Number.isFinite(currentId)) ids.add(currentId);
+    return ids;
+  }, [
+    workedArticleIds,
+    contentPackages,
+    allPieces,
+    multiFormatContent,
+    selectedArticleForApproval,
+  ]);
 
   const pilotProgress = useMemo(() => {
     const hasFormats = allPieces.length > 0 || (contentPackages || []).length > 0;
@@ -478,6 +530,7 @@ export default function App() {
     try {
       const data = normalizeProfile(await api('/profile'));
       setProfile(data);
+      setProfileError('');
       const drafts = {};
       for (const p of data?.pillars || []) drafts[p.slug] = p.target_percentage;
       setPillarDrafts(drafts);
@@ -490,6 +543,7 @@ export default function App() {
       );
     } catch (e) {
       console.error("Error fetching profile", e);
+      setProfileError(e.message || 'No se pudo cargar el perfil.');
     }
   };
 
@@ -685,12 +739,40 @@ export default function App() {
       ]);
       setAiProviders(pData || []);
       setAiUsageStats(normalizeUsage(uData));
+      setAiStatsError('');
+      return pData || [];
     } catch (e) {
       console.error("Error fetching AI stats", e);
+      setAiStatsError(e.message || 'No se pudieron cargar los proveedores de IA.');
+      return null;
     } finally {
       setLoading(false);
     }
   };
+
+  /** Carga silenciosa de proveedores (sin bloquear UI con loading global). */
+  const ensureAiProviders = async ({ force = false } = {}) => {
+    if (!force && Array.isArray(aiProviders) && aiProviders.length > 0) {
+      return aiProviders;
+    }
+    try {
+      const pData = await api('/ai/providers');
+      const list = pData || [];
+      setAiProviders(list);
+      return list;
+    } catch (e) {
+      console.error('Error loading AI providers', e);
+      return aiProviders || [];
+    }
+  };
+
+  const hasCloudApiProvider = (providers) =>
+    (providers || []).some(
+      (p) =>
+        p.is_active &&
+        !p.is_local &&
+        (p.has_api_key || Boolean(p.key_hint))
+    );
 
   const fetchAgentsCatalog = async () => {
     try {
@@ -852,11 +934,38 @@ export default function App() {
         method: 'PATCH',
         body: JSON.stringify(patch),
       });
-      notify(`Modelo actualizado a ${patch.model_name || 'nuevo valor'}`);
+      if (patch.api_key) {
+        notify('API key re-cifrada y guardada', 'success');
+      } else {
+        notify(`Modelo actualizado a ${patch.model_name || 'nuevo valor'}`);
+      }
       await fetchAiStats();
     } catch (e) {
-      notify(e.message || 'No se pudo actualizar el modelo', 'error');
+      notify(e.message || 'No se pudo actualizar el proveedor', 'error');
       throw e;
+    }
+  };
+
+  const removeAiProvider = async (provider) => {
+    if (!provider?.id) return;
+    const isDefaultLocal = provider.is_local && provider.provider_type === 'ollama';
+    const action = isDefaultLocal ? 'desactivar' : 'eliminar';
+    if (!window.confirm(`¿Quieres ${action} ${provider.name}?${isDefaultLocal ? ' Podrás activarlo de nuevo desde esta pantalla.' : ' Esta acción no se puede deshacer.'}`)) {
+      return;
+    }
+    try {
+      if (isDefaultLocal) {
+        await api(`/ai/providers/${provider.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ is_active: false }),
+        });
+      } else {
+        await api(`/ai/providers/${provider.id}`, { method: 'DELETE' });
+      }
+      notify(isDefaultLocal ? 'Ollama local desactivado' : `${provider.name} eliminado`, 'success');
+      await fetchAiStats();
+    } catch (e) {
+      notify(e.message || `No se pudo ${action} el proveedor`, 'error');
     }
   };
 
@@ -897,6 +1006,7 @@ export default function App() {
         : '/top10?days=60&limit=10';
       const data = normalizeTop10(await api(qs));
       setTop10(Array.isArray(data) ? data : []);
+      setTop10Error('');
       // Solo seleccionar #1; NO auto-generar LinkedIn (eso repetía siempre el mismo post)
       if (data.length > 0 && !selectedArticleForApproval) {
         setSelectedArticleForApproval(data[0]);
@@ -904,7 +1014,7 @@ export default function App() {
     } catch (e) {
       console.error("Error fetching Top 10", e);
       notify(e.message || 'No se pudo cargar el Top 10', 'error');
-      setTop10([]);
+      setTop10Error(e.message || 'No se pudo cargar el ranking.');
     } finally {
       setLoading(false);
     }
@@ -929,12 +1039,14 @@ export default function App() {
       const rows = (await api(`/articles?${params.toString()}`)).map(normalizeArticle);
       setArticles(rows);
       setArticlesTotalHint(rows.length);
+      setArticlesError('');
       if (search && search.trim() && rows.length === 0) {
         notify(`Sin resultados para “${search.trim()}”. Prueba otra palabra o limpia el filtro.`, 'warn');
       }
     } catch (e) {
       console.error("Error fetching articles", e);
       notify(e.message || 'Error al buscar noticias', 'error');
+      setArticlesError(e.message || 'No se pudo cargar el inventario de noticias.');
     } finally {
       setBusy((b) => {
         const next = { ...b };
@@ -984,8 +1096,12 @@ export default function App() {
     const langLabel = lang === 'en' ? 'inglés' : 'español';
     const modeLabel = mode === 'cloud' ? 'API' : mode === 'auto' ? 'auto' : 'local';
     if (mode === 'cloud') {
-      const hasCloud = (aiProviders || []).some((p) => p.is_active && !p.is_local);
-      if (!hasCloud) {
+      // No confiar solo en estado en memoria: tras login o sin visitar IA,
+      // aiProviders puede estar vacío aunque la key ya exista en DB.
+      const providers = await ensureAiProviders({
+        force: !hasCloudApiProvider(aiProviders),
+      });
+      if (!hasCloudApiProvider(providers)) {
         notify(
           'No hay API cloud configurada. Ve a Inteligencia Artificial y agrega tu API key (OpenAI, Anthropic o Gemini).',
           'warn'
@@ -1022,6 +1138,7 @@ export default function App() {
             );
             setMultiFormatContent(data);
             setSelectedLanguage(lang);
+            markArticleWorked(articleId);
             const modes = (data.pieces || [])
               .filter((p) => !fmtList || fmtList.includes(p.format_type))
               .map((p) => p.generation_mode)
@@ -1785,18 +1902,43 @@ export default function App() {
       >
         {activeTab === 'hoy' && (
           <HoyTab
-            deficitPillars={profile?.deficit_pillars || []}
             top10={top10}
             onUseSuggestion={useArticleInFlow}
             onRefreshTop10={() => fetchTop10({ persist: true })}
             onPatrol={runAgenticSearch}
             loadingTop10={loading}
             isSearching={isSearching}
+            top10Error={top10Error}
             adTrendNotes={adTrendNotes}
             adTrendMessage={adTrendMessage}
             adTrendBusy={adTrendBusy}
             onRefreshAdTrendNotes={fetchAdTrendNotes}
             onGenerateAdTrendNotes={generateAdTrendNotes}
+            onOpenSources={() => goToTab('profile')}
+            signalsCount={articlesTotalHint ?? articles?.length ?? 0}
+            flowCounts={{
+              discover: articlesTotalHint ?? articles?.length ?? top10?.length ?? 0,
+              create: allPieces.length,
+              review:
+                allPieces.filter((p) => p.status === 'pending_approval').length +
+                (pendingBlogPosts || []).filter((p) => p.status === 'pending' || p.status === 'pending_approval').length,
+              distribute: (publishedBlogPosts || []).length,
+            }}
+            intelligenceBusy={
+              Boolean(isBusy?.('collect') || robotJob?.key === 'collect' || loading || isSearching || adTrendBusy)
+            }
+            onRefreshIntelligence={async () => {
+              try {
+                await triggerIngest();
+              } catch {
+                /* ingest may notify itself */
+              }
+              await Promise.allSettled([
+                fetchTop10({ persist: true }),
+                generateAdTrendNotes(),
+              ]);
+            }}
+            onOpenLive={() => goToTab('live')}
           />
         )}
 
@@ -1807,6 +1949,7 @@ export default function App() {
             isBusy={isBusy}
             aiUsageStats={aiUsageStats}
             aiProviders={aiProviders}
+            aiStatsError={aiStatsError}
             newProvider={newProvider}
             setNewProvider={setNewProvider}
             testPrompt={testPrompt}
@@ -1815,6 +1958,7 @@ export default function App() {
             onRefreshModels={fetchAiStats}
             onCreateProvider={createAiProvider}
             onUpdateProvider={updateAiProvider}
+            onRemoveProvider={removeAiProvider}
             onRunTest={runGatewayTest}
             agentsCatalog={agentsCatalog}
             agentArticleId={agentArticleId}
@@ -1838,7 +1982,12 @@ export default function App() {
             selectedLanguage={selectedLanguage}
             onLanguageChange={changeFormatLanguage}
             providerMode={providerMode}
-            onProviderModeChange={setProviderMode}
+            onProviderModeChange={(mode) => {
+              setProviderMode(mode);
+              if (mode === 'cloud' || mode === 'auto') {
+                ensureAiProviders({ force: true });
+              }
+            }}
             aiProviders={aiProviders}
             fetchMultiFormat={fetchMultiFormat}
             formatBusy={isBusy('multiformat')}
@@ -1925,8 +2074,10 @@ export default function App() {
             articles={articles}
             articlesTotalHint={articlesTotalHint}
             isBusy={isBusy}
+            fetchError={articlesError}
             onFetchArticles={fetchArticles}
             onUseInFlow={useArticleInFlow}
+            workedArticleIds={workedArticleIdSet}
             onClearFilters={() => {
               setSearchQuery('');
               setSelectedCategory('');

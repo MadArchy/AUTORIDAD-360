@@ -2,6 +2,23 @@
 
 ## Arranque local
 
+### Stack canónico MySQL
+
+```bat
+docker compose up -d --build
+start-dev.bat
+```
+
+Comprueba `http://127.0.0.1:8000/api/v1/health/ready` antes de abrir el
+admin. Si la base se inicializa por primera vez, ejecuta
+`powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap-mysql.ps1`.
+La migración del piloto desde PostgreSQL se hace únicamente después de crear
+un dump con `backup-postgres.ps1`, mediante
+`cd backend` y
+`venv\Scripts\python.exe ..\scripts\migrate-postgres-to-mysql.py`.
+
+### Puente PostgreSQL (solo recuperación)
+
 **Camino único recomendado:**
 
 ```bat

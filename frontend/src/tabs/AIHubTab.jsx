@@ -11,6 +11,7 @@ export default function AIHubTab({
   isBusy,
   aiUsageStats,
   aiProviders,
+  aiStatsError,
   newProvider,
   setNewProvider,
   testPrompt,
@@ -19,6 +20,7 @@ export default function AIHubTab({
   onRefreshModels,
   onCreateProvider,
   onUpdateProvider,
+  onRemoveProvider,
   onRunTest,
   agentsCatalog,
   agentArticleId,
@@ -84,6 +86,7 @@ export default function AIHubTab({
           isBusy={isBusy}
           aiUsageStats={aiUsageStats}
           aiProviders={aiProviders}
+          aiStatsError={aiStatsError}
           newProvider={newProvider}
           setNewProvider={setNewProvider}
           testPrompt={testPrompt}
@@ -92,6 +95,7 @@ export default function AIHubTab({
           onRefresh={onRefreshModels}
           onCreateProvider={onCreateProvider}
           onUpdateProvider={onUpdateProvider}
+          onRemoveProvider={onRemoveProvider}
           onRunTest={onRunTest}
         />
       ) : (

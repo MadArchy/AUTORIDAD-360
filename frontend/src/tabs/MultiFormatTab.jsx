@@ -279,13 +279,13 @@ export default function MultiFormatTab({
       >
         <h4 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0 }}>Auditoría IA</h4>
         <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: '180px' }}>
+          <div style={{ flex: '1 1 140px', minWidth: 0 }}>
             <strong style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Argumentación:</strong>
             <div style={{ marginTop: 6 }}>
               <span className="score-tag">Score: {argScore}/100</span>
             </div>
           </div>
-          <div style={{ flex: 1, minWidth: '180px', fontSize: '0.85rem' }}>
+          <div style={{ flex: '1 1 140px', minWidth: 0, fontSize: '0.85rem' }}>
             {brand_review_json?.passed ? (
               <span style={{ color: '#10B981', display: 'flex', alignItems: 'center', gap: 4 }}>
                 <CheckCircle2 size={14} /> Marca OK
@@ -330,10 +330,13 @@ export default function MultiFormatTab({
 
     return (
       <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14, gap: 8, flexWrap: 'wrap' }}>
-          <strong style={{ fontSize: '1.1rem', color: titleColor }}>
-            {FORMAT_LABEL[subTab]} {statusBadge(apiFormat)}
-          </strong>
+        <div className="section-header" style={{ marginBottom: 14 }}>
+          <div>
+            <span className="section-eyebrow">Pieza · {pieceStatus(apiFormat) || 'borrador'}</span>
+            <strong style={{ display: 'block', marginTop: 4, fontSize: '1.1rem', color: titleColor }}>
+              {FORMAT_LABEL[subTab]} {statusBadge(apiFormat)}
+            </strong>
+          </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {subTab !== 'carousel' && (
               <button
@@ -387,15 +390,12 @@ export default function MultiFormatTab({
           </div>
         </div>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1.1fr) minmax(260px, 0.9fr)',
-            gap: 16,
-            alignItems: 'start',
-          }}
-        >
-          <div className="glass-card" style={{ padding: 18 }}>
+        <div className="studio-editor-grid">
+          <div className="editorial-card" style={{ padding: 18 }}>
+            <div className="section-header">
+              <span className="section-title">Editar</span>
+              <span className="meta-chip">{draft.length.toLocaleString('es-CO')} caracteres</span>
+            </div>
             <textarea
               value={draft}
               onChange={(e) => setDraft(fieldKey, e.target.value)}
@@ -410,27 +410,34 @@ export default function MultiFormatTab({
             />
             {renderAIAuditPanel(apiFormat)}
           </div>
-          <FormatPreview
-            format={previewFormat}
-            text={subTab === 'carousel' ? '' : draft}
-            slides={subTab === 'carousel' ? carouselSlides : []}
-            coverUrl={
-              subTab === 'carousel'
-                ? null
-                : (
-                    (multiFormatContent?.pieces || []).find((p) => p.format_type === apiFormat)
-                      ?.body_json?.image_url
-                    || (multiFormatContent?.pieces || []).find((p) => p.format_type === apiFormat)
-                      ?.body_json?.creatives?.covers?.[0]?.image_url
-                    || null
-                  )
-            }
-            authorName={authorName}
-            authorTitle={authorTitle}
-          />
+          <div className="editorial-card studio-preview-panel">
+            <div className="section-header">
+              <span className="section-title">Vista previa</span>
+              <span className="meta-chip">Red social</span>
+            </div>
+            <FormatPreview
+              format={previewFormat}
+              text={subTab === 'carousel' ? '' : draft}
+              slides={subTab === 'carousel' ? carouselSlides : []}
+              coverUrl={
+                subTab === 'carousel'
+                  ? null
+                  : (
+                      (multiFormatContent?.pieces || []).find((p) => p.format_type === apiFormat)
+                        ?.body_json?.image_url
+                      || (multiFormatContent?.pieces || []).find((p) => p.format_type === apiFormat)
+                        ?.body_json?.creatives?.covers?.[0]?.image_url
+                      || null
+                    )
+              }
+              authorName={authorName}
+              authorTitle={authorTitle}
+            />
+          </div>
         </div>
 
-        <div style={{ marginTop: 16 }}>
+        <details className="studio-disclosure" open style={{ marginTop: 16 }}>
+          <summary>Mejorar con IA</summary>
           <PieceCopilotPanel
             pieceId={pieceId}
             draftText={draft}
@@ -439,9 +446,11 @@ export default function MultiFormatTab({
             disabled={formatBusy || isBusy?.('multiformat')}
             onApply={(refined) => setDraft(fieldKey, refined)}
           />
-        </div>
+        </details>
 
-        <StudioDistribute
+        <details className="studio-disclosure" style={{ marginTop: 12 }}>
+          <summary>Distribuir y publicar</summary>
+          <StudioDistribute
           pieceId={pieceId}
           pieceStatus={pieceStatus(apiFormat)}
           articleId={selectedArticleForApproval?.id}
@@ -470,7 +479,8 @@ export default function MultiFormatTab({
                 title: s.title,
               }))
           }
-        />
+          />
+        </details>
       </div>
     );
   };
@@ -485,8 +495,9 @@ export default function MultiFormatTab({
               Ver Hoy
             </button>
           </div>
-          <h2 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: '8px' }}>Estudio de contenido</h2>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>
+          <span className="page-eyebrow">Línea de producción</span>
+          <h2 className="page-title">Estudio de contenido</h2>
+          <p className="page-description" style={{ marginBottom: '16px' }}>
             Genera formatos, previsualiza cómo se verían en redes, mejora con IA y publica o monta el blog desde aquí.
             Publicar y Blog ya no están menús aparte.
           </p>
@@ -519,9 +530,10 @@ export default function MultiFormatTab({
             }}
           >
             <div>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800 }}>Estudio de contenido</h2>
+              <span className="page-eyebrow">Línea de producción · {selectedArticleForApproval.source_name || 'noticia seleccionada'}</span>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, marginTop: 4 }}>Estudio de contenido</h2>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                Editor + preview + chat IA + publicar redes / blog, por formato.
+                {selectedArticleForApproval.title}
               </p>
             </div>
 
@@ -531,22 +543,15 @@ export default function MultiFormatTab({
                 value={providerMode}
                 disabled={formatBusy || isBusy?.('multiformat')}
                 onChange={(e) => onProviderModeChange?.(e.target.value)}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: '8px',
-                  background: 'var(--bg-card)',
-                  color: '#FFF',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  fontWeight: 600,
-                  opacity: formatBusy || isBusy?.('multiformat') ? 0.6 : 1,
-                }}
+                className="form-control"
+                style={{ width: 'auto', fontWeight: 600, opacity: formatBusy || isBusy?.('multiformat') ? 0.6 : 1 }}
                 title="Local = Ollama. API = clave en Inteligencia Artificial."
               >
                 <option value="local">IA local (Ollama)</option>
                 <option value="cloud">API web (tu key)</option>
                 <option value="auto">Auto (local → API)</option>
               </select>
-              {providerMode === 'cloud' && !(aiProviders || []).some((p) => p.is_active && !p.is_local) && (
+              {providerMode === 'cloud' && !(aiProviders || []).some((p) => p.is_active && !p.is_local && (p.has_api_key || p.key_hint)) && (
                 <button
                   type="button"
                   className="btn btn-secondary"
