@@ -43,8 +43,8 @@ async def lifespan(_app: FastAPI):
     import app.models.marketing  # noqa: F401
     import app.models.saas  # noqa: F401
 
+    settings.assert_secure_production()
     if settings.is_production:
-        settings.assert_secure_production()
         # Producción exige `alembic upgrade head`; nunca modifica esquema al arrancar.
         yield
         return

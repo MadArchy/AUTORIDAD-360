@@ -13,6 +13,7 @@ from app.models.learning import Lead
 from app.models.org import Organization
 from app.models.saas import CustomDomain
 from app.services.plans import org_saas_payload
+from app.services.public_rate_limit import enforce_public_lead_rate_limit
 from app.services.quota import get_active_profile
 
 router = APIRouter(prefix="/api/v1/public", tags=["public"])
@@ -111,8 +112,13 @@ def public_branding(
 
 
 @router.post("/leads")
-def public_create_lead(body: PublicLeadCreate, db: Session = Depends(get_db)):
-    """Captura pública de lead con UTM (blog / landing). Rate-limit ops queda a cargo del proxy."""
+def public_create_lead(
+    body: PublicLeadCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Captura pública de lead con UTM (blog / landing) limitada por IP."""
+    enforce_public_lead_rate_limit(request)
     org = _resolve_org(db, host=body.host, organization_slug=body.organization_slug)
     profile = get_active_profile(db, organization_id=org.id)
     if not profile:

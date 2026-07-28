@@ -12,12 +12,15 @@ def test_refine_article_content(monkeypatch):
         title="Nueva Ley de IA",
         source_name="Boletín Oficial",
         url="https://example.com/law",
+        source_url="https://example.com/law",
         full_text="Texto legal original sobre la inteligencia artificial.",
         summary="Resumen de la ley.",
     )
 
     def mock_query(model):
         class MockQuery:
+            def filter(self, *args):
+                return self
             def filter_by(self, **kwargs):
                 return self
             def first(self):

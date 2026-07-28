@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import NewsArticle, WeeklyReport
+from app.models import BlogPost, NewsArticle, WeeklyReport
 from app.services.scoring import get_top10
 
 
@@ -113,7 +113,6 @@ def create_blog_draft_from_article(
     organization_id: int | None = None,
 ) -> "BlogPost":
     """Crea (o regenera) un borrador de blog con análisis editorial vía LLM."""
-    from app.models import BlogPost
     import html
     import re
 

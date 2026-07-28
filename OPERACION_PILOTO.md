@@ -6,13 +6,14 @@
 
 ```bat
 docker compose up -d --build
-start-dev.bat
+cd frontend
+npm run dev -- --host 127.0.0.1 --port 3000
 ```
 
 - API: `http://127.0.0.1:8000`
 - Admin: `http://127.0.0.1:3000` (`VITE_API_URL=http://127.0.0.1:8000/api/v1`)
 - MySQL host: `localhost:3307`
-- Redis: `localhost:6379`
+- Redis: solo red interna Docker (no se expone al host)
 
 Comprueba `http://127.0.0.1:8000/api/v1/health/ready` antes de abrir el admin.
 Si la base se inicializa por primera vez:
@@ -20,6 +21,30 @@ Si la base se inicializa por primera vez:
 ```bat
 powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap-mysql.ps1
 ```
+
+Los puertos del stack Docker quedan limitados a `127.0.0.1`. Para un piloto
+expuesto, configura el proxy/TLS y nunca publiques MySQL o Redis directamente.
+
+### Secretos para piloto o producción
+
+1. Copia `backend/.env.example` a `backend/.env`.
+2. Genera valores distintos y pégalos en `backend/.env`:
+
+```bat
+powershell -ExecutionPolicy Bypass -File .\scripts\generate-secrets.ps1 -AppEnv pilot
+```
+
+`APP_ENV=pilot` o `production` rechaza secretos de ejemplo y
+`DEV_SEED_PASSWORD=admin123` al arrancar. `development` solo es aceptable si
+el stack permanece en localhost.
+
+### Protección de leads públicos
+
+`POST /api/v1/public/leads` permite por defecto 8 solicitudes por IP cada 60
+segundos y devuelve `429` al excederlo. Redis es obligatorio por defecto:
+si no responde, devuelve `503` para evitar dejar el formulario sin protección.
+Define `TRUSTED_PROXY_IPS` únicamente con las IPs de proxies que puedan enviar
+`X-Forwarded-For`.
 
 Motores de noticias opcionales (mejor cobertura que solo DDG): en `backend/.env`
 añade `TAVILY_API_KEY` y/o `SERPAPI_API_KEY` y/o `BING_SEARCH_API_KEY`.

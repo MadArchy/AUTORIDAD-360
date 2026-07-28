@@ -397,7 +397,7 @@ export default function App() {
     }
   };
 
-  const useArticleInFlow = (art) => {
+  const selectArticleForFlow = (art) => {
     const normalized = normalizeArticle(art);
     const articleId = art.article_id ?? art.id;
     const title = (art.title || '').toLowerCase();
@@ -483,7 +483,7 @@ export default function App() {
       );
       return;
     }
-    useArticleInFlow(art);
+    selectArticleForFlow(art);
     notify('Listo en Estudio — autoriza la generación de formatos');
   };
 
@@ -1980,7 +1980,7 @@ export default function App() {
         {activeTab === 'hoy' && (
           <HoyTab
             top10={top10}
-            onUseSuggestion={useArticleInFlow}
+            onUseSuggestion={selectArticleForFlow}
             onCreateFromTrend={createContentFromTrend}
             onRefreshTop10={() => fetchTop10({ persist: true })}
             onPatrol={runAgenticSearch}
@@ -2158,7 +2158,7 @@ export default function App() {
             isBusy={isBusy}
             fetchError={articlesError}
             onFetchArticles={fetchArticles}
-            onUseInFlow={useArticleInFlow}
+            onUseInFlow={selectArticleForFlow}
             workedArticleIds={workedArticleIdSet}
             onClearFilters={() => {
               setSearchQuery('');

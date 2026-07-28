@@ -23,10 +23,11 @@ jobs:
           python -m pip install -U pip
           pip install -r requirements.txt
           pip install ruff
-      - name: Ruff lint (selected)
-        run: |
-          ruff check app/services/plans.py app/services/saas_service.py app/services/marketing_service.py app/api/public_routes.py app/api/saas_routes.py --select E,F,I --ignore E501
-      - name: Pytest unit (no DB docker)
+      - name: Ruff lint
+        # La base histórica aún tiene imports/estilo pendientes; bloqueamos errores
+        # que hacen el código inválido y dejamos la limpieza completa como deuda aparte.
+        run: ruff check app tests --select E9,F63,F7,F82
+      - name: Pytest suite (SQLite)
         env:
           APP_ENV: development
           JWT_SECRET_KEY: ci-jwt-secret-key-min-32-chars-long!!
@@ -34,4 +35,36 @@ jobs:
           SESSION_SECRET_KEY: ci-session-secret-key-min-32-chars!
           DATABASE_URL: sqlite:///./ci.db
         run: |
-          python -m pytest tests/test_fase0_safety.py tests/test_fase4_marketing.py tests/test_fase5_saas.py tests/test_fase5_gateway.py tests/test_publish_auth_unit.py -q --tb=line
+          python -m pytest tests/ -q --tb=line
+
+  frontend-admin:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  frontend-blog:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend-blog
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend-blog/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build

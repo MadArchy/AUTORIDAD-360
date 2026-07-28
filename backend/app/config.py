@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     # Publicación nativa: false = dry-run aunque la cuenta esté connected
     publish_native_live: bool = False
     dev_seed_password: str = "admin123"
+    public_lead_rate_limit: int = 8
+    public_lead_rate_window_seconds: int = 60
+    public_rate_limit_fail_open: bool = False
+    trusted_proxy_ips: str = ""
     client_name: str = "Juan Vasquez"
     cors_origins: str = (
         "http://localhost:3000,http://localhost:3001,http://localhost:3002,"
@@ -68,7 +72,7 @@ class Settings(BaseSettings):
         return (self.jwt_secret_key or self.encryption_key or "").strip()
 
     def assert_secure_production(self) -> None:
-        if not self.is_production:
+        if self.app_env.strip().lower() not in {"pilot", "production"}:
             return
         values = {
             "JWT_SECRET_KEY": self.effective_jwt_secret,
@@ -79,7 +83,12 @@ class Settings(BaseSettings):
             if len(value) < 32 or value.startswith("cambia-"):
                 raise RuntimeError(f"{name} must be a non-default secret of at least 32 characters")
         if len(set(values.values())) != len(values):
-            raise RuntimeError("Production secrets must be distinct")
+            raise RuntimeError("Pilot/production secrets must be distinct")
+        if self.dev_seed_password == "admin123":
+            raise RuntimeError("DEV_SEED_PASSWORD must not use the default value outside local development")
+
+    def trusted_proxy_ip_set(self) -> set[str]:
+        return {ip.strip() for ip in self.trusted_proxy_ips.split(",") if ip.strip()}
 
 
 settings = Settings()
