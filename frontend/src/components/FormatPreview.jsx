@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 const MEDIA_ORIGIN = (
-  import.meta.env.VITE_API_URL || 'http://127.0.0.1:8012/api/v1'
+  import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1'
 ).replace(/\/api\/v1\/?$/, '');
 
 export function resolveMediaUrl(url) {

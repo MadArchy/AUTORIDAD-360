@@ -1,5 +1,13 @@
-import React, { useState } from 'react';
-import { Search, ArrowUpRight, ExternalLink, Sparkles, Newspaper } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import {
+  Search,
+  ArrowUpRight,
+  ExternalLink,
+  Sparkles,
+  Newspaper,
+  Eye,
+  Database,
+} from 'lucide-react';
 import AICopilotDrawer from '../components/AICopilotDrawer';
 
 const STATUS_LABELS = {
@@ -12,6 +20,8 @@ const STATUS_LABELS = {
   pending: 'Pendiente',
 };
 
+const CAT_TONES = ['blue', 'green', 'purple', 'pink', 'orange', 'cyan', 'amber'];
+
 function statusClass(status) {
   const key = String(status || '').toLowerCase();
   if (key === 'verified' || key === 'approved' || key === 'published') return 'status-verified';
@@ -22,14 +32,21 @@ function statusClass(status) {
 function formatDate(value) {
   if (!value) return 'Sin fecha';
   try {
-    return new Date(value).toLocaleDateString('es-CO', {
-      day: '2-digit',
+    return new Date(value).toLocaleDateString('es-MX', {
+      day: 'numeric',
       month: 'short',
       year: 'numeric',
     });
   } catch {
     return 'Sin fecha';
   }
+}
+
+function categoryTone(name) {
+  const raw = String(name || 'x');
+  let hash = 0;
+  for (let i = 0; i < raw.length; i += 1) hash = (hash + raw.charCodeAt(i) * (i + 1)) % 997;
+  return CAT_TONES[hash % CAT_TONES.length];
 }
 
 export default function LiveNewsTab({
@@ -65,6 +82,15 @@ export default function LiveNewsTab({
     onFetchArticles(value, searchQuery);
   };
 
+  const toneByCategory = useMemo(() => {
+    const map = {};
+    for (const c of categories) {
+      map[c.category] = categoryTone(c.display_name || c.category);
+      map[c.display_name] = map[c.category];
+    }
+    return map;
+  }, [categories]);
+
   return (
     <section className="live-news glass-panel">
       <AICopilotDrawer
@@ -83,13 +109,18 @@ export default function LiveNewsTab({
         <div>
           <span className="page-eyebrow">Inventario editorial</span>
           <h2 className="page-title">Noticias en vivo</h2>
-          <p className="page-description">
-            Escanea el inventario, filtra por tipología y lleva la señal más clara al Estudio.
-          </p>
         </div>
         <div className="live-news__stats">
-          <span className="meta-chip">{resultCount} visibles</span>
-          {totalAll > 0 && <span className="meta-chip">{totalAll} en base</span>}
+          <span className="meta-chip meta-chip--stat">
+            <Eye size={13} aria-hidden="true" />
+            {resultCount} visibles
+          </span>
+          {totalAll > 0 && (
+            <span className="meta-chip meta-chip--stat">
+              <Database size={13} aria-hidden="true" />
+              {totalAll} en base
+            </span>
+          )}
         </div>
       </header>
 
@@ -103,10 +134,13 @@ export default function LiveNewsTab({
             onChange={(e) => onSearchInput(e.target.value)}
             className="form-control"
             aria-label="Buscar noticias"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onFetchArticles(selectedCategory, searchQuery);
+            }}
           />
           <button
             type="button"
-            className="btn btn-secondary"
+            className="btn btn-primary"
             disabled={searching}
             onClick={() => onFetchArticles(selectedCategory, searchQuery)}
           >
@@ -125,20 +159,26 @@ export default function LiveNewsTab({
             Todas
             <span>{totalAll || resultCount}</span>
           </button>
-          {categories.map((c) => (
-            <button
-              key={c.category}
-              type="button"
-              role="tab"
-              aria-selected={selectedCategory === c.category}
-              className={`live-news__chip ${selectedCategory === c.category ? 'is-active' : ''}`}
-              onClick={() => selectCategory(c.category)}
-              title={c.display_name}
-            >
-              {c.display_name}
-              <span>{c.count}</span>
-            </button>
-          ))}
+          {categories.map((c) => {
+            const tone = toneByCategory[c.category] || 'blue';
+            return (
+              <button
+                key={c.category}
+                type="button"
+                role="tab"
+                aria-selected={selectedCategory === c.category}
+                className={`live-news__chip live-news__chip--${tone} ${
+                  selectedCategory === c.category ? 'is-active' : ''
+                }`}
+                onClick={() => selectCategory(c.category)}
+                title={c.display_name}
+              >
+                <i className={`live-news__dot live-news__dot--${tone}`} aria-hidden="true" />
+                {c.display_name}
+                <span>{c.count}</span>
+              </button>
+            );
+          })}
         </div>
 
         {(hasFilters || searching) && (
@@ -177,12 +217,12 @@ export default function LiveNewsTab({
 
       {searching && articles.length === 0 && (
         <div className="live-news__grid" aria-busy="true" aria-label="Cargando noticias">
-          {[1, 2, 3, 4].map((n) => (
+          {[1, 2, 3, 4, 5].map((n) => (
             <div key={n} className="live-news__card live-news__card--skeleton">
-              <div className="skeleton" style={{ width: '28%', height: 18 }} />
-              <div className="skeleton" style={{ width: '92%', height: 24, marginTop: 14 }} />
-              <div className="skeleton" style={{ width: '78%', height: 14, marginTop: 10 }} />
-              <div className="skeleton" style={{ width: '55%', height: 14, marginTop: 8 }} />
+              <div className="skeleton" style={{ width: '40%', height: 16 }} />
+              <div className="skeleton" style={{ width: '92%', height: 22, marginTop: 14 }} />
+              <div className="skeleton" style={{ width: '70%', height: 12, marginTop: 10 }} />
+              <div className="skeleton" style={{ width: '100%', height: 36, marginTop: 18 }} />
             </div>
           ))}
         </div>
@@ -207,6 +247,8 @@ export default function LiveNewsTab({
             const status = art.verification_status || art.status;
             const sourceUrl = art.url || art.source_url;
             const worked = isWorked(art);
+            const catLabel = art.category || 'sin-categoría';
+            const tone = toneByCategory[catLabel] || categoryTone(catLabel);
             return (
               <article
                 key={art.id}
@@ -214,7 +256,10 @@ export default function LiveNewsTab({
                 data-worked={worked ? 'true' : undefined}
               >
                 <div className="live-news__card-top">
-                  <span className="score-tag">{art.category || 'sin-categoría'}</span>
+                  <span className={`live-news__cat live-news__cat--${tone}`}>
+                    <i className={`live-news__dot live-news__dot--${tone}`} aria-hidden="true" />
+                    {catLabel}
+                  </span>
                   <div className="live-news__card-flags">
                     {worked ? (
                       <span className="live-news__worked-badge" title="Ya trabajaste esta noticia en Estudio">
@@ -229,48 +274,47 @@ export default function LiveNewsTab({
 
                 <h3 className="live-news__title">{art.title}</h3>
 
-                {(art.summary || art.excerpt) && (
-                  <p className="live-news__excerpt">
-                    {(art.summary || art.excerpt || '').slice(0, 190)}
-                    {(art.summary || art.excerpt || '').length > 190 ? '…' : ''}
-                  </p>
-                )}
-
                 <div className="live-news__meta">
                   <span>{art.source_name || 'Fuente'}</span>
                   <span>{formatDate(art.published_at)}</span>
-                  {(art.news_type_name || art.news_type) && (
-                    <span>{art.news_type_name || art.news_type}</span>
-                  )}
                 </div>
+
+                {(art.summary || art.excerpt) && (
+                  <p className="live-news__excerpt">
+                    {(art.summary || art.excerpt || '').slice(0, 160)}
+                    {(art.summary || art.excerpt || '').length > 160 ? '…' : ''}
+                  </p>
+                )}
 
                 <div className="live-news__actions">
                   <button
                     type="button"
-                    className={worked ? 'btn btn-secondary' : 'btn btn-primary'}
+                    className={worked ? 'btn btn-secondary live-news__cta' : 'btn btn-primary live-news__cta'}
                     onClick={() => onUseInFlow(art)}
                   >
-                    <ArrowUpRight size={14} aria-hidden="true" />
                     {worked ? 'Abrir en Estudio' : 'Crear en Estudio'}
+                    <ArrowUpRight size={15} aria-hidden="true" />
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setCopilotArticle(art)}
-                  >
-                    <Sparkles size={13} aria-hidden="true" />
-                    Copiloto
-                  </button>
-                  {sourceUrl ? (
-                    <a
-                      href={sourceUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                  <div className="live-news__actions-row">
+                    <button
+                      type="button"
                       className="btn btn-secondary"
+                      onClick={() => setCopilotArticle(art)}
                     >
-                      Fuente <ExternalLink size={12} aria-hidden="true" />
-                    </a>
-                  ) : null}
+                      <Sparkles size={13} aria-hidden="true" />
+                      Copiloto
+                    </button>
+                    {sourceUrl ? (
+                      <a
+                        href={sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-secondary"
+                      >
+                        Fuente <ExternalLink size={12} aria-hidden="true" />
+                      </a>
+                    ) : null}
+                  </div>
                 </div>
               </article>
             );

@@ -2,16 +2,33 @@
 
 ## Arranque local
 
-### Stack canónico MySQL
+### Stack canónico MySQL (recomendado)
 
 ```bat
 docker compose up -d --build
 start-dev.bat
 ```
 
-Comprueba `http://127.0.0.1:8000/api/v1/health/ready` antes de abrir el
-admin. Si la base se inicializa por primera vez, ejecuta
-`powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap-mysql.ps1`.
+- API: `http://127.0.0.1:8000`
+- Admin: `http://127.0.0.1:3000` (`VITE_API_URL=http://127.0.0.1:8000/api/v1`)
+- MySQL host: `localhost:3307`
+- Redis: `localhost:6379`
+
+Comprueba `http://127.0.0.1:8000/api/v1/health/ready` antes de abrir el admin.
+Si la base se inicializa por primera vez:
+
+```bat
+powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap-mysql.ps1
+```
+
+Motores de noticias opcionales (mejor cobertura que solo DDG): en `backend/.env`
+añade `TAVILY_API_KEY` y/o `SERPAPI_API_KEY` y/o `BING_SEARCH_API_KEY`.
+El health reporta `dependencies.news_search`.
+
+Imágenes sociales: requiere proveedor OpenAI activo con clave que descifre
+(`key_ok: true` en Inteligencia Artificial). Si no, Hoy avisará y no fingirá
+creatividades de calidad.
+
 La migración del piloto desde PostgreSQL se hace únicamente después de crear
 un dump con `backup-postgres.ps1`, mediante
 `cd backend` y
@@ -19,32 +36,20 @@ un dump con `backup-postgres.ps1`, mediante
 
 ### Puente PostgreSQL (solo recuperación)
 
-**Camino único recomendado:**
+**No es el camino diario.** Solo si MySQL no está disponible:
 
 ```bat
 start-pilot.bat
 ```
 
-Equivale a: Docker Postgres/Redis → `alembic upgrade head` → API/Celery/UI → blog.
+o `docker compose -f docker-compose.offline.yml up -d` + `start-dev-offline.bat`.
 
-Manual:
-
-1. Levantar Postgres y Redis:
-   `docker compose -f docker-compose.offline.yml up -d`
-2. Ejecutar migraciones:
-   `cd backend && venv\Scripts\python.exe -m alembic upgrade head`
-3. Iniciar API, workers Celery y admin:
-   `start-dev-offline.bat`
-4. Iniciar el blog público:
-   `start-blog.bat`
-
-La API usa `http://127.0.0.1:8012`, el admin `:3001` y el blog `:3002`.
-Los jobs pesados requieren los workers `autoridad-celery-ingest` y
-`autoridad-celery-editorial`. El primero no queda bloqueado por inferencias LLM.
+En ese modo excepcional la API puede estar en `:8012` y el admin en `:3001`.
+Los jobs pesados requieren los workers ingest y editorial.
 
 ## Verificación
 
-- `GET /api/v1/health` informa DB, Redis, Celery y Ollama.
+- `GET /api/v1/health` informa DB, Redis, Celery, Ollama y motores de noticias.
 - `GET /api/v1/jobs` permite revisar cola, ejecución y errores.
 - En producción, `/docs`, seeds y autenticación por headers están deshabilitados.
 

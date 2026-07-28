@@ -1,8 +1,7 @@
 /** Cliente API canónico Autoridad 360 (Fases 1–7).
- * Docker:     VITE_API_URL=http://127.0.0.1:8000/api/v1
- * Piloto local (uvicorn --port 8012): default abajo
+ * Docker / piloto: VITE_API_URL=http://127.0.0.1:8000/api/v1
  */
-const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8012/api/v1';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
 
 const ORG_KEY = 'org_slug';
 const TOKEN_KEY = 'jwt_token';

@@ -1,7 +1,7 @@
 # Poll health y alerta en consola si DB/Redis caen.
-# Uso: powershell -ExecutionPolicy Bypass -File .\scripts\watch-health.ps1 [-ApiUrl http://127.0.0.1:8012]
+# Uso: powershell -ExecutionPolicy Bypass -File .\scripts\watch-health.ps1 [-ApiUrl http://127.0.0.1:8000]
 param(
-  [string]$ApiUrl = "http://127.0.0.1:8012",
+  [string]$ApiUrl = "http://127.0.0.1:8000",
   [int]$IntervalSec = 30
 )
 $ErrorActionPreference = "Continue"

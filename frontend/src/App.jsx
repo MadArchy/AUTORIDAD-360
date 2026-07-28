@@ -2018,6 +2018,9 @@ export default function App() {
               ]);
             }}
             onOpenLive={() => goToTab('live')}
+            aiProviders={aiProviders}
+            healthInfo={healthInfo}
+            onOpenAiGateway={() => goToTab('aigateway')}
           />
         )}
 

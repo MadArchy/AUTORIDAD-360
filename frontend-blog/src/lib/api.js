@@ -1,9 +1,9 @@
 /**
  * Cliente API del blog público (sin JWT / sin headers de tenant).
- * Admin editorial vive en Vite (:3001); este sitio es solo lectura publicada.
+ * Admin editorial vive en Vite (:3000); este sitio es solo lectura publicada.
  */
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8012/api/v1";
+  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
 
 export function getApiBase() {
   return API_BASE;

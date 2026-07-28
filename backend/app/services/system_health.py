@@ -71,6 +71,24 @@ def get_system_health() -> dict:
     except Exception as exc:  # noqa: BLE001
         dependencies["chroma"] = {"ok": False, "error": str(exc)[:160]}
 
+    try:
+        from app.services.news_search_providers import configured_providers
+
+        providers = configured_providers()
+        paid = [p for p in providers if p in {"tavily", "serpapi", "bing"}]
+        dependencies["news_search"] = {
+            "ok": True,
+            "providers": providers,
+            "paid_configured": bool(paid),
+            "hint": (
+                "OK"
+                if paid
+                else "Solo GNews RSS + DDG. Añade TAVILY_API_KEY / SERPAPI_API_KEY / BING_SEARCH_API_KEY para mejor cobertura."
+            ),
+        }
+    except Exception as exc:  # noqa: BLE001
+        dependencies["news_search"] = {"ok": False, "error": str(exc)[:160]}
+
     critical_ok = dependencies["database"]["ok"] and dependencies["redis"]["ok"]
     return {
         "status": "ok" if critical_ok else "degraded",

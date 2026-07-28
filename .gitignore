@@ -35,3 +35,7 @@ Thumbs.db
 backend/chroma_data/
 chroma_data/
 backend/media/
+celerybeat-schedule
+celerybeat-schedule.*
+backend/celerybeat-schedule
+backend/celerybeat-schedule.*

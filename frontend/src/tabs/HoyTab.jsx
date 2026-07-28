@@ -421,6 +421,9 @@ export default function HoyTab({
   signalsCount = 0,
   flowCounts = null,
   onOpenLive,
+  aiProviders = [],
+  healthInfo = null,
+  onOpenAiGateway,
 }) {
   const [dismissed, setDismissed] = useState(() => new Set());
   const [analysisOpen, setAnalysisOpen] = useState(true);
@@ -568,6 +571,24 @@ export default function HoyTab({
     : filteredTrendCards.slice(0, 8);
 
   const socialNotes = useMemo(() => buildSocialNotes(adTrendNotes), [adTrendNotes]);
+
+  const openaiImagesReady = useMemo(
+    () =>
+      (aiProviders || []).some(
+        (p) =>
+          p?.is_active &&
+          String(p.provider_type || '').toLowerCase() === 'openai' &&
+          p.has_api_key &&
+          p.key_ok !== false
+      ),
+    [aiProviders]
+  );
+
+  const newsSearchMeta = healthInfo?.dependencies?.news_search || null;
+  const trendMeta = adTrendNotes?.meta || {};
+  const trendSource = trendMeta.source || null;
+  const searchProviders = trendMeta.providers || newsSearchMeta?.providers || [];
+  const paidNewsReady = Boolean(newsSearchMeta?.paid_configured);
 
   useEffect(() => {
     setRevealedImages({});
@@ -920,7 +941,35 @@ export default function HoyTab({
             <span className="cmd-trends__pulse" aria-hidden="true" />
             <h3 className="cmd-trends__title">Tendencias y señales</h3>
           </div>
+          <div className="cmd-honesty">
+            {trendSource && (
+              <span className={`cmd-honesty__badge cmd-honesty__badge--${trendSource}`}>
+                {trendSource === 'llm' ? 'Síntesis IA' : 'Tips / fallback'}
+              </span>
+            )}
+            {searchProviders.length > 0 && (
+              <span className="cmd-honesty__badge" title="Motores usados en la última corrida">
+                Motores: {searchProviders.join(' · ')}
+              </span>
+            )}
+            {!paidNewsReady && (
+              <span className="cmd-honesty__badge cmd-honesty__badge--warn">
+                Sin API de noticias de pago (GNews/DDG)
+              </span>
+            )}
+          </div>
         </div>
+
+        {(trendSource === 'fallback' || !paidNewsReady) && (
+          <p className="cmd-honesty__note">
+            {trendSource === 'fallback'
+              ? 'Las tarjetas muestran señales del inventario o tips estáticos: no inventamos tendencias. Regenera notas cuando el LLM esté OK.'
+              : null}
+            {!paidNewsReady
+              ? ' Para mejor cobertura del día, añade TAVILY_API_KEY o SERPAPI_API_KEY en backend/.env y reinicia la API.'
+              : null}
+          </p>
+        )}
 
         {!adTrendBusy && !filteredTrendCards.length && (
           <p className="cmd-muted">
@@ -1041,6 +1090,24 @@ export default function HoyTab({
               </p>
             </div>
           </div>
+
+          {!openaiImagesReady && (
+            <div className="cmd-honesty__banner" role="status">
+              <strong>Imágenes de calidad no disponibles.</strong>
+              {' '}
+              No hay proveedor OpenAI activo con clave válida (`key_ok`).
+              Las creatividades usarán plantilla básica o fallarán.
+              {' '}
+              <button
+                type="button"
+                className="cmd-linkish"
+                onClick={() => onOpenAiGateway?.()}
+              >
+                Ir a Inteligencia Artificial
+              </button>
+            </div>
+          )}
+
           <ul className="cmd-social-notes__list">
             {socialNotes.map((note) => {
               const revealedUrl = revealedImages[note.key] || null;
@@ -1158,9 +1225,18 @@ export default function HoyTab({
                             className="btn btn-primary"
                             disabled={creating || Boolean(imageBusyKey) || !onGenerateAdNoteImage}
                             onClick={() => handleCreateNoteImage(note.key)}
+                            title={
+                              openaiImagesReady
+                                ? 'Genera con gpt-image-1 + marca'
+                                : 'Sin OpenAI usable: saldrá plantilla básica'
+                            }
                           >
                             <ImagePlus size={16} aria-hidden="true" />
-                            {creating ? 'Creando imagen…' : 'Crear imagen'}
+                            {creating
+                              ? 'Creando imagen…'
+                              : openaiImagesReady
+                                ? 'Crear imagen'
+                                : 'Crear imagen (plantilla)'}
                           </button>
                           {imgError && <span className="cmd-social-notes__img-error">{imgError}</span>}
                         </div>
