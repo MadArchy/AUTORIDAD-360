@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# Herramientas exclusivas de desarrollo y CI.
+pytest>=8.0.0
+ruff>=0.16.0
