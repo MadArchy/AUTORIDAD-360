@@ -162,6 +162,40 @@ def _plan_tools(agent_name: str, state: EditorialState) -> list[tuple[str, dict[
             )
         ]
 
+    if agent_name == "juan_editorial":
+        if not article_id:
+            raise ValueError("juan_editorial requiere article_id de un artículo verificado")
+        return [
+            (
+                "draft_juan_editorial",
+                {
+                    "article_id": article_id,
+                    "languages": languages,
+                    "prefer_llm": prefer_llm,
+                },
+            )
+        ]
+
+    if agent_name == "juan_ai_governance":
+        kwargs: dict[str, Any] = {}
+        if article_id:
+            kwargs["article_id"] = article_id
+        if query:
+            kwargs["topic"] = query
+        if not kwargs.get("article_id") and not kwargs.get("topic"):
+            raise ValueError("juan_ai_governance requiere article_id o query")
+        return [("draft_ai_governance_brief", kwargs)]
+
+    if agent_name == "juan_ip_patents":
+        kwargs = {}
+        if article_id:
+            kwargs["article_id"] = article_id
+        if query:
+            kwargs["topic"] = query
+        if not kwargs.get("article_id") and not kwargs.get("topic"):
+            raise ValueError("juan_ip_patents requiere article_id o query")
+        return [("draft_ip_patent_brief", kwargs)]
+
     if agent_name == "reviewer":
         package_id = artifacts.get("package_id") or state.get("package_id")
         if not package_id:
@@ -172,7 +206,7 @@ def _plan_tools(agent_name: str, state: EditorialState) -> list[tuple[str, dict[
 
 
 def _apply_tool_artifacts(artifacts: dict[str, Any], tool_name: str, data: dict[str, Any]) -> None:
-    if tool_name == "write_package" and data.get("package_id"):
+    if tool_name in ("write_package", "draft_juan_editorial") and data.get("package_id"):
         artifacts["package_id"] = data["package_id"]
         artifacts["piece_ids"] = data.get("piece_ids", [])
     if tool_name == "scout_web":
@@ -191,21 +225,55 @@ def _apply_tool_artifacts(artifacts: dict[str, Any], tool_name: str, data: dict[
         artifacts["batch"] = data
     if tool_name == "review_package":
         artifacts["reviews"] = data.get("reviews")
+    if tool_name == "draft_ai_governance_brief":
+        artifacts["ai_governance_brief"] = {
+            "topic": data.get("topic"),
+            "article_id": data.get("article_id"),
+            "model_used": data.get("model_used"),
+            "brief_preview": (data.get("brief_markdown") or "")[:500],
+        }
+    if tool_name == "draft_ip_patent_brief":
+        artifacts["ip_patent_brief"] = {
+            "topic": data.get("topic"),
+            "article_id": data.get("article_id"),
+            "model_used": data.get("model_used"),
+            "brief_preview": (data.get("brief_markdown") or "")[:500],
+        }
 
 
 def _run_agent_node(db: Session, agent_name: str, state: EditorialState) -> dict[str, Any]:
+    from app.agents.runtime import set_agent_status
+
     steps, _ = _think(db, agent_name, state)
     artifacts = dict(state.get("artifacts") or {})
     errors = list(state.get("errors") or [])
     ok = bool(state.get("ok", True))
     article_id = state.get("article_id")
+    org_id = state.get("organization_id")
     summary_parts: list[str] = []
+    set_agent_status(
+        agent_name,
+        organization_id=org_id,
+        status="running",
+        current_step="plan",
+        run_id=state.get("run_id"),
+        article_id=article_id,
+        error=None,
+    )
 
     try:
         planned = _plan_tools(agent_name, state)
     except Exception as exc:  # noqa: BLE001
         steps = _append_step(steps, agent_name, status="error", detail=str(exc)[:500])
         errors.append(str(exc)[:500])
+        set_agent_status(
+            agent_name,
+            organization_id=org_id,
+            status="failed",
+            error=str(exc)[:400],
+            ok=False,
+            article_id=article_id,
+        )
         return {
             "steps": steps,
             "artifacts": artifacts,
@@ -216,6 +284,15 @@ def _run_agent_node(db: Session, agent_name: str, state: EditorialState) -> dict
         }
 
     for tool_name, kwargs in planned:
+        set_agent_status(
+            agent_name,
+            organization_id=org_id,
+            status="running",
+            current_step=tool_name,
+            current_tool=tool_name,
+            article_id=article_id or kwargs.get("article_id"),
+            run_id=state.get("run_id"),
+        )
         try:
             data = invoke_tool(tool_name, db, **kwargs)
             soft_fail = _batch_soft_fail(data)
@@ -284,12 +361,25 @@ def _run_agent_node(db: Session, agent_name: str, state: EditorialState) -> dict
             )
 
     package_id = artifacts.get("package_id") or state.get("package_id")
+    summary = "; ".join(summary_parts) or "sin pasos"
+    set_agent_status(
+        agent_name,
+        organization_id=org_id,
+        status="completed" if ok else "failed",
+        current_step=None,
+        current_tool=None,
+        run_id=state.get("run_id"),
+        article_id=article_id,
+        summary=summary[:400],
+        ok=ok,
+        error=None if ok else (errors[-1] if errors else summary)[:400],
+    )
     return {
         "steps": steps,
         "artifacts": artifacts,
         "errors": errors,
         "ok": ok,
-        "summary": "; ".join(summary_parts) or "sin pasos",
+        "summary": summary,
         "article_id": article_id,
         "package_id": package_id,
     }

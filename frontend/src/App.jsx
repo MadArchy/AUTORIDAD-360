@@ -67,6 +67,7 @@ import ReportTab from './tabs/ReportTab';
 import MultiEmpresaTab from './tabs/MultiEmpresaTab';
 import MetricsTab from './tabs/MetricsTab';
 import HoyTab from './tabs/HoyTab';
+import MultiNewsSynthesisTab from './tabs/MultiNewsSynthesisTab';
 import { enqueueJob, getRememberedJobs, waitForJob } from './jobs';
 import { normalizeTop10, normalizeArticle } from './utils/normalizers';
 
@@ -190,6 +191,7 @@ export default function App() {
   const [contentPackages, setContentPackages] = useState([]);
   const [pilotTick, setPilotTick] = useState(0);
   const [agentsCatalog, setAgentsCatalog] = useState(null);
+  const [agentBoard, setAgentBoard] = useState(null);
   const [agentRunResult, setAgentRunResult] = useState(null);
   const [agentArticleId, setAgentArticleId] = useState('');
   const [agentPipelineMode, setAgentPipelineMode] = useState('ingest');
@@ -375,7 +377,7 @@ export default function App() {
       fetchAgentsCatalog();
     }
     if (tab === 'profile') {
-      fetchProfile();
+      if (!profile) fetchProfile();
       fetchPctRecommendation(false);
     }
     if (tab === 'hoy') {
@@ -845,6 +847,11 @@ export default function App() {
     try {
       const data = await api('/agents');
       setAgentsCatalog(data || { agents: [] });
+      if (data?.board) setAgentBoard(data.board);
+      else {
+        const board = await api('/agents/status').catch(() => null);
+        if (board) setAgentBoard(board);
+      }
     } catch (e) {
       console.error(e);
       setAgentsCatalog({ agents: [], error: e.message });
@@ -852,9 +859,56 @@ export default function App() {
     }
   };
 
+  const fetchAgentBoard = async () => {
+    try {
+      const board = await api('/agents/status');
+      setAgentBoard(board || null);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const refreshAgentsView = async () => {
+    await Promise.all([fetchAgentsCatalog(), fetchAgentBoard()]);
+  };
+
+  const runAgentsAutoCycle = async () => {
+    await withBusy('agents-auto', async () => {
+      try {
+        const result = await api('/agents/auto/run', {
+          method: 'POST',
+          body: JSON.stringify({
+            limit: agentLimit,
+            include_juan: true,
+            reason: agentReason,
+          }),
+        });
+        setAgentRunResult(result);
+        notify(
+          result.queued
+            ? 'Ciclo automático encolado — mira el tablero'
+            : result.summary || 'Ciclo automático ejecutado',
+          result.ok === false ? 'warn' : 'success'
+        );
+        fetchAgentBoard();
+        // refrescos mientras trabaja
+        setTimeout(fetchAgentBoard, 3000);
+        setTimeout(fetchAgentBoard, 8000);
+        setTimeout(fetchAgentBoard, 20000);
+      } catch (e) {
+        notify(e.message || 'Error al correr ciclo automático', 'error');
+      }
+    });
+  };
+
   const runNamedAgent = async (name) => {
     const articleId = agentArticleId ? Number(agentArticleId) : null;
-    const needsArticle = name === 'writer' || name === 'verifier';
+    const needsArticle =
+      name === 'writer' ||
+      name === 'verifier' ||
+      name === 'juan_editorial' ||
+      name === 'juan_ai_governance' ||
+      name === 'juan_ip_patents';
     if (needsArticle && !Number.isFinite(articleId)) {
       notify(`${name} necesita un article_id (noticia verificada)`, 'warn');
       return;
@@ -889,8 +943,11 @@ export default function App() {
 
   const runAgentsPipeline = async () => {
     const articleId = agentArticleId ? Number(agentArticleId) : null;
-    if (agentPipelineMode === 'article' && !Number.isFinite(articleId)) {
-      notify('El modo article requiere un article_id', 'warn');
+    if (
+      (agentPipelineMode === 'article' || agentPipelineMode === 'juan_practice') &&
+      !Number.isFinite(articleId)
+    ) {
+      notify(`El modo ${agentPipelineMode} requiere un article_id`, 'warn');
       return;
     }
     await withBusy('agents-pipeline', async () => {
@@ -2052,9 +2109,11 @@ export default function App() {
             agentReason={agentReason}
             setAgentReason={setAgentReason}
             agentRunResult={agentRunResult}
-            onRefreshAgents={fetchAgentsCatalog}
+            agentBoard={agentBoard}
+            onRefreshAgents={refreshAgentsView}
             onRunPipeline={runAgentsPipeline}
             onRunNamed={runNamedAgent}
+            onRunAutoCycle={runAgentsAutoCycle}
           />
         )}
 
@@ -2117,6 +2176,8 @@ export default function App() {
         {activeTab === 'profile' && (
           <ProfileTab
             profile={profile}
+            profileError={profileError}
+            onRetryProfile={fetchProfile}
             pillarDrafts={pillarDrafts}
             setPillarDrafts={setPillarDrafts}
             saveProfilePercentages={saveProfilePercentages}
@@ -2143,6 +2204,10 @@ export default function App() {
             reportError={reportError}
             notify={notify}
           />
+        )}
+
+        {activeTab === 'multisynthesis' && (
+          <MultiNewsSynthesisTab />
         )}
 
         {/* TAB 5: EXPLORADOR DE NOTICIAS & INGESTA */}

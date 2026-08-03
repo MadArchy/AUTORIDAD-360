@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session
 from app.agents.graph_nodes import bump_write_retry, make_agent_node, route_after_review
 from app.agents.graph_state import EditorialState
 
-PipelineMode = Literal["discover", "ingest", "article", "full", "trends"]
+PipelineMode = Literal[
+    "discover", "ingest", "article", "full", "trends", "juan_practice"
+]
 
 PIPELINE_STEPS: dict[str, list[str]] = {
     "discover": ["scout", "trend_ad_advisor"],
@@ -18,9 +20,20 @@ PIPELINE_STEPS: dict[str, list[str]] = {
     "article": ["classifier", "verifier", "writer", "reviewer"],
     "full": ["scout", "classifier"],
     "trends": ["trend_ad_advisor"],
+    "juan_practice": ["juan_editorial", "juan_ai_governance", "juan_ip_patents"],
 }
 
-AGENT_NAMES = ("scout", "classifier", "verifier", "writer", "reviewer", "trend_ad_advisor")
+AGENT_NAMES = (
+    "scout",
+    "classifier",
+    "verifier",
+    "writer",
+    "reviewer",
+    "trend_ad_advisor",
+    "juan_editorial",
+    "juan_ai_governance",
+    "juan_ip_patents",
+)
 
 
 def _route_if_ok(state: EditorialState) -> str:
@@ -68,6 +81,24 @@ def build_pipeline_graph(db: Session, mode: PipelineMode):
             {"continue": "classifier", "stop": END},
         )
         graph.add_edge("classifier", END)
+        return graph.compile()
+
+    if mode == "juan_practice":
+        graph.add_node("juan_editorial", make_agent_node(db, "juan_editorial"))
+        graph.add_node("juan_ai_governance", make_agent_node(db, "juan_ai_governance"))
+        graph.add_node("juan_ip_patents", make_agent_node(db, "juan_ip_patents"))
+        graph.add_edge(START, "juan_editorial")
+        graph.add_conditional_edges(
+            "juan_editorial",
+            _route_if_ok,
+            {"continue": "juan_ai_governance", "stop": END},
+        )
+        graph.add_conditional_edges(
+            "juan_ai_governance",
+            _route_if_ok,
+            {"continue": "juan_ip_patents", "stop": END},
+        )
+        graph.add_edge("juan_ip_patents", END)
         return graph.compile()
 
     # article: classify → verify → write → review → (retry writer?)
@@ -126,6 +157,10 @@ def describe_pipeline_modes() -> dict[str, Any]:
             "article": "Clasificar → Verificar → Redactar → Revisar (LangGraph; reintento writer si critique falla)",
             "full": "Scout + lote de clasificación/verificación",
             "trends": "Solo advisor de tendencias y notas para redes (DDG news del día)",
+            "juan_practice": (
+                "Paquete editorial Juan + brief AI Readiness & Governance + brief IP/Patents "
+                "(misma voz; requiere article_id)"
+            ),
         },
         "steps": PIPELINE_STEPS,
     }

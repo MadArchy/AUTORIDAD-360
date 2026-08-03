@@ -22,6 +22,9 @@ class BaseAgent(ABC):
     task_type: str = "agent_plan"
 
     def describe(self) -> dict[str, Any]:
+        from app.agents.runtime import AGENT_PRIORITY
+
+        meta = next((a for a in AGENT_PRIORITY if a["name"] == self.name), None)
         return {
             "name": self.name,
             "role": self.role,
@@ -33,6 +36,10 @@ class BaseAgent(ABC):
                 for t in self.tools
             ],
             "task_type": self.task_type,
+            "priority": meta["priority"] if meta else 99,
+            "auto": bool(meta["auto"]) if meta else False,
+            "phase": meta["phase"] if meta else "manual",
+            "function": meta["function"] if meta else self.role,
         }
 
     def think(self, db: Session, ctx: AgentContext) -> str | None:

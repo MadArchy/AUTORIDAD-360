@@ -24,6 +24,8 @@ class ProfessionalProfile(Base):
     search_themes_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Notas del agente de tendencias sociales + publicidad orgánica
     ad_trend_notes_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Persona/voz canónica (Juan J. Vásquez y futuros perfiles)
+    persona_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(

@@ -11,6 +11,19 @@ from app.models.content import ContentPiece
 from app.models.editorial import NewsArticle, BlogPost
 from app.services.llm import _call_model
 from app.services.audit import log_audit
+from app.services.juan_persona import LEGAL_DISCLAIMER, get_juan_persona_block
+
+
+def _juan_copilot_preamble(db: Session, organization_id: int | None = None) -> str:
+    persona = get_juan_persona_block(
+        db, organization_id=organization_id, practice="editorial"
+    )
+    return (
+        f"{persona}\n\n"
+        "Actúas como copiloto editorial en voz Juan (no como asistente genérico "
+        "de Autoridad 360). Respeta grounding, tono soberano y el disclaimer:\n"
+        f"{LEGAL_DISCLAIMER}"
+    )
 
 
 def refine_article_content(
@@ -35,8 +48,9 @@ def refine_article_content(
     current_text = getattr(article, target_field, "") or article.full_text or article.summary or ""
 
     prompt = f"""
-    Eres el Copiloto Editorial Senior de Autoridad 360.
-    Tu objetivo es iterar, perfeccionar o adaptar el contenido de la siguiente noticia según la instrucción del usuario.
+    {_juan_copilot_preamble(db, organization_id)}
+
+    Itera o adapta el contenido de la siguiente noticia según la instrucción del usuario.
 
     TÍTULO: {article.title}
     FUENTE: {article.source_name} ({article.source_url})
@@ -50,8 +64,9 @@ def refine_article_content(
 
     Reglas obligatorias:
     1. Si el usuario pide reescribir o adaptar, devuelve la versión actualizada del texto lista para publicarse.
-    2. Mantén la precisión de los hechos y la veracidad.
-    3. Responde de forma clara y directa en idioma español a menos que el usuario especifique otro idioma.
+    2. Mantén la precisión de los hechos; no inventes leyes, casos ni patentes.
+    3. Responde en español salvo que el usuario pida otro idioma.
+    4. No digas que esto constituye asesoría legal personalizada.
     """
 
     new_content, model_used = _call_model(
@@ -93,8 +108,10 @@ def refine_blog_post_content(
 
     current_text = getattr(post, target_field, "") or post.body_markdown or post.summary or ""
 
+    org_id = getattr(post, "organization_id", None)
     prompt = f"""
-    Eres el Copiloto Editorial Senior de Autoridad 360.
+    {_juan_copilot_preamble(db, org_id)}
+
     Ajusta el siguiente post de blog respetando el contexto y aplicando la instrucción del usuario.
 
     TÍTULO ACTUAL: {post.title}
@@ -108,7 +125,8 @@ def refine_blog_post_content(
 
     Reglas:
     - Retorna la nueva versión mejorada del contenido en formato markdown limpio.
-    - Preserva la estructura SEO y tono profesional.
+    - Preserva SEO, voz Juan y disclaimer editorial cuando el tema sea legal/regulatorio.
+    - No inventes citas, casos ni números de patente.
     """
 
     new_content, model_used = _call_model(
@@ -169,7 +187,8 @@ def refine_content_piece(
     }.get(piece.format_type, piece.format_type)
 
     prompt = f"""
-    Eres el Copiloto Editorial Senior de Autoridad 360.
+    {_juan_copilot_preamble(db, organization_id)}
+
     Mejora la siguiente pieza de formato ({format_hint}) según la instrucción del usuario.
 
     TÍTULO DE LA PIEZA: {piece.title}
@@ -185,7 +204,7 @@ def refine_content_piece(
     Reglas:
     1. Devuelve SOLO el contenido actualizado listo para pegar (sin preámbulos).
     2. Si el formato es carrusel y el input es JSON, responde con JSON válido de slides.
-    3. Mantén hechos y tono profesional autoritativo; sin hype vacío.
+    3. Mantén hechos y voz Juan (soberana, práctica); sin hype; sin promesas legales.
     4. Idioma: el mismo del contenido original salvo que la instrucción pida otro.
     """
 

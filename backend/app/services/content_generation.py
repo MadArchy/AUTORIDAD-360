@@ -39,6 +39,16 @@ def language_instruction(code: str) -> str:
     )
 
 
+def _persona_block_for_article(db: Session, article: NewsArticle) -> str:
+    from app.services.juan_persona import get_juan_persona_block
+
+    return get_juan_persona_block(
+        db,
+        organization_id=getattr(article, "organization_id", None),
+        practice="editorial",
+    )
+
+
 def _key_facts(article: NewsArticle) -> list[str]:
     data = article.classification_json or {}
     facts = data.get("key_facts") or []
@@ -213,6 +223,7 @@ def _llm_draft(
         "key_facts": json.dumps(facts, ensure_ascii=False),
         # Menos contexto = menos prompt_eval en Ollama (ganancia grande en CPU local)
         "full_text": (article.full_text or "")[:3500],
+        "persona_block": _persona_block_for_article(db, article),
     }
     from app.services.legal_seo_service import resolve_generation_prompt
 
@@ -280,6 +291,7 @@ def _llm_draft(
     if needs_argument_rewrite or needs_linkedin_depth:
         if needs_linkedin_depth:
             rewrite_prompt = LINKEDIN_REWRITE_PROMPT.format(
+                persona_block=format_kwargs["persona_block"],
                 article_id=article.id,
                 source_url=article.source_url,
                 language=language,

@@ -50,6 +50,7 @@ from app.models.legal_seo import (
 )
 from app.models.marketing import CampaignLink, NewsletterSubscriber, ServiceOffer
 from app.models.saas import ContentRefreshItem, CustomDomain
+from app.models.multi_news import MultiNewsSynthesis
 from app.models.profile import (
     ContentPillar,
     EditorialPercentage,
@@ -91,6 +92,7 @@ __all__ = [
     "MediaAsset",
     "MetricSnapshot",
     "MultiFormatContent",
+    "MultiNewsSynthesis",
     "NewsArticle",
     "NewsCategory",
     "NewsletterSubscriber",

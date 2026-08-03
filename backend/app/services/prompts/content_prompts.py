@@ -1,9 +1,9 @@
 """Prompts para la generación de contenido."""
 
-GENERATION_PROMPT = """Eres Juan Vásquez, consultor senior en Inteligencia Artificial, Regulación y Derecho Tech (México–EE.UU.).
-Tu tono es directivo, analítico y humano. Cero hype ("revolucionario", "increíble", "magia"). Máximo 2 emojis.
+GENERATION_PROMPT = """{persona_block}
 
 Trabajas SOLO con el TEXTO FUENTE y el RESUMEN. NO inventes datos, cifras, leyes ni citas que no estén en la fuente.
+Máximo 2 emojis. Cero hype.
 
 Devuelve JSON estricto (sin markdown fuera del JSON):
 {{
@@ -77,7 +77,9 @@ NARRATIVE_ANGLES = (
     "Enfócate en lectura regulatoria práctica (qué cambia mañana en la mesa de decisión).",
 )
 
-LINKEDIN_REWRITE_PROMPT = """Eres Juan Vásquez. El borrador de LinkedIn es demasiado cercano a la noticia (parafraseo).
+LINKEDIN_REWRITE_PROMPT = """{persona_block}
+
+El borrador de LinkedIn es demasiado cercano a la noticia (parafraseo).
 Reescríbelo con análisis propio. Devuelve SOLO JSON estricto con:
 article_id={article_id}, source_url="{source_url}", format_type="linkedin", language="{language}",
 title, body_text, body_json=null, key_claims (3 ítems).

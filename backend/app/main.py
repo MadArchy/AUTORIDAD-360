@@ -42,6 +42,7 @@ async def lifespan(_app: FastAPI):
     import app.models.legal_seo  # noqa: F401
     import app.models.marketing  # noqa: F401
     import app.models.saas  # noqa: F401
+    import app.models.multi_news  # noqa: F401
 
     settings.assert_secure_production()
     if settings.is_production:
@@ -49,6 +50,13 @@ async def lifespan(_app: FastAPI):
         yield
         return
     Base.metadata.create_all(bind=engine)
+    # create_all no añade columnas nuevas a tablas ya existentes
+    try:
+        from app.services.juan_persona import ensure_persona_column
+
+        ensure_persona_column(bind=engine)
+    except Exception as exc:
+        print(f"[lifespan] persona_json column warning: {exc!r}")
 
     db = SessionLocal()
     try:

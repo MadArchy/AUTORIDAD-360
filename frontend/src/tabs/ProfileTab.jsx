@@ -3,6 +3,8 @@ import { CheckCircle2, Plus, RotateCcw, Search, Sliders, Sparkles, Trash2, XCirc
 
 export default function ProfileTab({
   profile,
+  profileError = '',
+  onRetryProfile,
   pillarDrafts,
   setPillarDrafts,
   saveProfilePercentages,
@@ -51,7 +53,20 @@ export default function ProfileTab({
 
   return (
     <>
-      {!profile && (
+      {!profile && profileError && (
+        <section className="glass-panel" style={{ padding: '24px' }}>
+          <h2 className="page-title" style={{ fontSize: '1.25rem' }}>No se pudo cargar el perfil</h2>
+          <p style={{ color: 'var(--text-secondary)', margin: '10px 0 16px', maxWidth: 640 }}>
+            {profileError}
+          </p>
+          {onRetryProfile && (
+            <button type="button" className="btn btn-primary" onClick={onRetryProfile}>
+              Reintentar
+            </button>
+          )}
+        </section>
+      )}
+      {!profile && !profileError && (
         <section className="glass-panel" style={{ padding: '24px' }}>
           <div className="skeleton" style={{ width: '34%', marginBottom: 14 }} />
           <div className="skeleton" style={{ width: '72%', marginBottom: 8 }} />

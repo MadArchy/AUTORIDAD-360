@@ -72,6 +72,38 @@ o `docker compose -f docker-compose.offline.yml up -d` + `start-dev-offline.bat`
 En ese modo excepcional la API puede estar en `:8012` y el admin en `:3001`.
 Los jobs pesados requieren los workers ingest y editorial.
 
+## Agentes automáticos (prioridad + tablero)
+
+En **AI Hub → Agentes** verás el tablero en vivo (prioridad, estado ACTIVO/IDLE/OK,
+función actual). Orden del ciclo automático:
+
+1. `scout` → 2. `classifier` → 3–5. `verifier`/`writer`/`reviewer` (si hay artículo) →
+6. `trend_ad_advisor` → 7–9. agentes Juan (`juan_editorial`, `juan_ai_governance`,
+`juan_ip_patents`).
+
+- **Manual ahora:** botón **Correr ciclo automático** → `POST /api/v1/agents/auto/run`
+- **Estado:** `GET /api/v1/agents/status` (también embebido en `GET /api/v1/agents`)
+- **Beat:** cada hora al minuto 40 (`run_agent_priority_cycle` en cola `llm`).
+  Tras cambiar el schedule: `docker restart autoridad360-celery-beat autoridad360-celery-editorial`.
+
+## Agentes Juan J. Vásquez
+
+Una sola persona/voz (`backend/app/services/juan_persona.py`) y tres agentes en
+**AI Hub → Agentes**:
+
+| Agente | Uso |
+|--------|-----|
+| `juan_editorial` | Paquete multi-formato con voz Juan (requiere `article_id`) |
+| `juan_ai_governance` | Brief AI Readiness (Education / Technology / Governance) |
+| `juan_ip_patents` | Brief PI/patentes (prosecution, FTO, inventorship, AI+IP) |
+
+Pipeline `juan_practice`: corre los tres en serie sobre un `article_id` verificado
+(editorial → AI governance → IP). En la UI: modo pipeline **juan_practice** +
+`article_id` → **Correr pipeline**. También `POST /api/v1/agents/pipeline/run`
+con `{"mode":"juan_practice","article_id":…}`.
+
+Disclaimer fijo: thought leadership editorial; no constituye asesoría legal.
+
 ## Verificación
 
 - `GET /api/v1/health` informa DB, Redis, Celery, Ollama y motores de noticias.

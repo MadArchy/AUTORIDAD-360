@@ -209,10 +209,17 @@ class AIGatewayService:
             {"role": "user", "content": prompt}
         ]
 
-        response = completion(
-            model=provider.model_name,
-            messages=messages,
-            api_key=api_key,
-            temperature=0.2
-        )
+        model = provider.model_name or ""
+        kwargs: dict = {
+            "model": model,
+            "messages": messages,
+            "api_key": api_key,
+        }
+        # gpt-5 / o-series: temperature≠1 → 400
+        lowered = model.lower()
+        if lowered.startswith(("gpt-5", "o1", "o3", "o4")):
+            kwargs["max_completion_tokens"] = 8192
+        else:
+            kwargs["temperature"] = 0.2
+        response = completion(**kwargs)
         return response.choices[0].message.content

@@ -26,6 +26,21 @@ BANNED_HYPE = {
     "100% seguro",
 }
 
+# Claims legales peligrosos (thought leadership ≠ asesoría personalizada)
+BANNED_LEGAL_CLAIMS = {
+    "asesoría legal personalizada",
+    "asesoria legal personalizada",
+    "esto constituye asesoría legal",
+    "esto constituye asesoria legal",
+    "relación abogado-cliente",
+    "relacion abogado-cliente",
+    "garantizamos el resultado",
+    "resultado legal garantizado",
+    "consejo legal vinculante",
+    "te garantizo que ganarás",
+    "te garantizo que ganaras",
+}
+
 REQUIRED_VOICE = {
     "must_cite_source": True,
     "max_exclamation": 2,
@@ -216,6 +231,10 @@ def review_brand(
     for phrase in BANNED_HYPE:
         if phrase in text:
             issues.append(f"hype_banned:{phrase}")
+
+    for phrase in BANNED_LEGAL_CLAIMS:
+        if phrase in text:
+            issues.append(f"legal_claim_banned:{phrase}")
 
     excl = (piece.body_text or "").count("!")
     if excl > REQUIRED_VOICE["max_exclamation"]:

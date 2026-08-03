@@ -151,6 +151,74 @@ class TrendAdAdvisorAgent(BaseAgent):
         return [("trend_ad_notes", kwargs)]
 
 
+class JuanEditorialAgent(BaseAgent):
+    name = "juan_editorial"
+    role = (
+        "Redactor de autoridad Juan J. Vásquez: convierte noticias verificadas en "
+        "piezas LinkedIn/blog/newsletter con su voz (hecho ancla + perspectiva)"
+    )
+    tools = ["draft_juan_editorial"]
+    task_type = "generate_content"
+
+    def plan(self, ctx: AgentContext) -> list[tuple[str, dict[str, Any]]]:
+        if not ctx.article_id:
+            raise ValueError("juan_editorial requiere article_id de un artículo verificado")
+        return [
+            (
+                "draft_juan_editorial",
+                {
+                    "article_id": ctx.article_id,
+                    "languages": ctx.languages,
+                    "prefer_llm": ctx.prefer_llm,
+                },
+            )
+        ]
+
+
+class JuanAIGovernanceAgent(BaseAgent):
+    name = "juan_ai_governance"
+    role = (
+        "Counsel AI Readiness & Governance (Education / Technology / Governance): "
+        "briefs para GC, boards, CISOs — sin vender policy-only"
+    )
+    tools = ["draft_ai_governance_brief"]
+    task_type = "generate_content"
+
+    def plan(self, ctx: AgentContext) -> list[tuple[str, dict[str, Any]]]:
+        kwargs: dict[str, Any] = {}
+        if ctx.article_id:
+            kwargs["article_id"] = ctx.article_id
+        topic = ctx.query or ctx.extras.get("topic")
+        if topic:
+            kwargs["topic"] = topic
+        if not kwargs.get("article_id") and not kwargs.get("topic"):
+            raise ValueError(
+                "juan_ai_governance requiere article_id o query/topic"
+            )
+        return [("draft_ai_governance_brief", kwargs)]
+
+
+class JuanIPPatentsAgent(BaseAgent):
+    name = "juan_ip_patents"
+    role = (
+        "Counsel PI/patentes: prosecution, FTO, inventorship, AI+IP — "
+        "tono práctico MX–US, sin inventar patentes ni outcomes"
+    )
+    tools = ["draft_ip_patent_brief"]
+    task_type = "generate_content"
+
+    def plan(self, ctx: AgentContext) -> list[tuple[str, dict[str, Any]]]:
+        kwargs: dict[str, Any] = {}
+        if ctx.article_id:
+            kwargs["article_id"] = ctx.article_id
+        topic = ctx.query or ctx.extras.get("topic")
+        if topic:
+            kwargs["topic"] = topic
+        if not kwargs.get("article_id") and not kwargs.get("topic"):
+            raise ValueError("juan_ip_patents requiere article_id o query/topic")
+        return [("draft_ip_patent_brief", kwargs)]
+
+
 AGENTS: dict[str, BaseAgent] = {
     "scout": ScoutAgent(),
     "classifier": ClassifierAgent(),
@@ -158,6 +226,9 @@ AGENTS: dict[str, BaseAgent] = {
     "writer": WriterAgent(),
     "reviewer": ReviewerAgent(),
     "trend_ad_advisor": TrendAdAdvisorAgent(),
+    "juan_editorial": JuanEditorialAgent(),
+    "juan_ai_governance": JuanAIGovernanceAgent(),
+    "juan_ip_patents": JuanIPPatentsAgent(),
 }
 
 

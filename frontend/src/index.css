@@ -3483,6 +3483,230 @@ select optgroup {
   color: var(--text-primary);
 }
 
+/* Síntesis multinoticia — un solo artículo fusionado */
+.multi-synth {
+  padding: clamp(1.25rem, 2.5vw, 1.75rem);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.multi-synth__header {
+  margin-bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.multi-synth__header-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.multi-synth__provider {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.multi-synth__provider select {
+  min-width: 180px;
+  font-weight: 600;
+}
+
+.multi-synth__loading,
+.multi-synth__empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.multi-synth__loading strong,
+.multi-synth__empty strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.multi-synth__loading p,
+.multi-synth__empty span {
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.multi-synth__article {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.multi-synth__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.multi-synth__focus {
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.multi-synth__focus p {
+  margin: 6px 0 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.multi-synth__label {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.multi-synth__body {
+  max-height: min(78vh, 860px);
+  overflow: auto;
+  padding: clamp(1.25rem, 2.5vw, 2rem) clamp(1.25rem, 3vw, 2.4rem);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.55), rgba(8, 12, 18, 0.92)),
+    #0b1017;
+  color: #d7dee8;
+  font-size: 1.02rem;
+  line-height: 1.75;
+  letter-spacing: 0.01em;
+}
+
+.multi-synth__body--essay .jv-essay {
+  max-width: 42rem;
+  margin: 0 auto;
+}
+
+.multi-synth__body .jv-lede {
+  color: #f1f5f9;
+  font-size: 1.18rem;
+  font-weight: 650;
+  line-height: 1.55;
+  margin: 0 0 1.4em;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.multi-synth__body h2,
+.multi-synth__body h3 {
+  color: #f8fafc;
+  margin: 1.55em 0 0.55em;
+  font-size: 1.12rem;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+
+.multi-synth__body p {
+  margin: 0 0 1em;
+}
+
+.multi-synth__body a {
+  color: #93c5fd;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.multi-synth__body ul,
+.multi-synth__body ol {
+  margin: 0 0 1.15em 1.25em;
+  padding: 0;
+}
+
+.multi-synth__body li {
+  margin: 0 0 0.45em;
+}
+
+.multi-synth__body .jv-perspective {
+  margin: 0.4em 0 1.2em;
+  padding: 1rem 1.15rem;
+  border-left: 3px solid #38bdf8;
+  background: rgba(14, 116, 144, 0.14);
+  border-radius: 0 10px 10px 0;
+}
+
+.multi-synth__body .jv-perspective p {
+  margin: 0;
+  color: #e2e8f0;
+}
+
+.multi-synth__body .jv-disclaimer {
+  margin-top: 1.6em;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+  font-size: 0.86rem;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.multi-synth__body .jv-sources {
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.multi-synth__body .jv-sources h2 {
+  margin-top: 0;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+}
+
+.multi-synth__body .jv-sources__note {
+  font-size: 0.84rem;
+  color: #94a3b8;
+  margin-bottom: 0.75em;
+}
+
+.multi-synth__body .jv-sources ol {
+  font-size: 0.88rem;
+  color: #cbd5e1;
+}
+
+.multi-synth__improve {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.multi-synth__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.multi-synth__slug {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
 @media (max-width: 980px) {
   .app-shell {
     grid-template-columns: 76px minmax(0, 1fr);

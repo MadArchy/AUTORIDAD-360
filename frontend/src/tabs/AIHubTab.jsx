@@ -32,9 +32,11 @@ export default function AIHubTab({
   agentReason,
   setAgentReason,
   agentRunResult,
+  agentBoard,
   onRefreshAgents,
   onRunPipeline,
   onRunNamed,
+  onRunAutoCycle,
   initialSub = 'modelos',
 }) {
   const [sub, setSub] = useState(initialSub === 'agentes' ? 'agentes' : 'modelos');
@@ -103,6 +105,7 @@ export default function AIHubTab({
           embedded
           isBusy={isBusy}
           agentsCatalog={agentsCatalog}
+          agentBoard={agentBoard}
           agentArticleId={agentArticleId}
           setAgentArticleId={setAgentArticleId}
           agentLimit={agentLimit}
@@ -115,6 +118,7 @@ export default function AIHubTab({
           onRefresh={onRefreshAgents}
           onRunPipeline={onRunPipeline}
           onRunNamed={onRunNamed}
+          onRunAutoCycle={onRunAutoCycle}
         />
       )}
     </section>

@@ -54,6 +54,7 @@ celery_app.conf.update(
         "app.tasks.generate_blog_draft_task": {"queue": "llm"},
         "app.tasks.generate_trend_ad_notes_task": {"queue": "llm"},
         "app.tasks.daily_editorial_intelligence": {"queue": "llm"},
+        "app.tasks.run_agent_priority_cycle": {"queue": "llm"},
     },
     beat_schedule={
         "collect-rss-every-6-hours": {
@@ -76,6 +77,12 @@ celery_app.conf.update(
         "daily-editorial-intelligence-1pm": {
             "task": "app.tasks.daily_editorial_intelligence",
             "schedule": crontab(minute=0, hour=13),
+        },
+        # Ciclo LangGraph por prioridad (scout→classify→produce→trends→juan)
+        "agent-priority-cycle-hourly": {
+            "task": "app.tasks.run_agent_priority_cycle",
+            "schedule": crontab(minute=40),
+            "kwargs": {"include_juan": True, "limit": 5, "reason": False},
         },
     },
 )
@@ -325,6 +332,39 @@ def generate_trend_ad_notes_task(
                 "trends_count": len(notes.get("trends") or []),
                 "hits_count": (notes.get("meta") or {}).get("hits_count"),
             }
+        finally:
+            db.close()
+
+    return _run_tracked(job_id, self, work)
+
+
+@celery_app.task(bind=True, name="app.tasks.run_agent_priority_cycle", max_retries=1)
+def run_agent_priority_cycle_task(
+    self,
+    organization_id: int | None = None,
+    limit: int = 5,
+    include_juan: bool = True,
+    reason: bool = False,
+    job_id: int | None = None,
+):
+    """Ciclo automático de agentes LangGraph ordenado por prioridad."""
+
+    def work():
+        from app.models import SessionLocal
+        from app.services.agent_auto_cycle import run_priority_cycle
+
+        db = SessionLocal()
+        try:
+            if organization_id is not None:
+                db.info["organization_id"] = organization_id
+            return run_priority_cycle(
+                db,
+                organization_id=organization_id,
+                limit=limit,
+                include_juan=include_juan,
+                reason=reason,
+                job_id=job_id,
+            )
         finally:
             db.close()
 

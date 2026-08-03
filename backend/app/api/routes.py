@@ -761,6 +761,10 @@ def get_profile(
 ):
     require_roles(ctx, *_STAFF)
     from app.api.deps_env import allow_auto_seed
+    from app.services.juan_persona import ensure_persona_column
+
+    # Self-heal: DB piloto sin migración → evita 500 / skeleton infinito en Perfil
+    ensure_persona_column(db)
 
     profile = get_active_profile(db, slug=slug, organization_id=ctx.org_id)
     if not profile and allow_auto_seed():
@@ -1832,3 +1836,127 @@ def copilot_refine_blog_route(
         raise HTTPException(404, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(500, str(exc)) from exc
+
+
+class SuggestFocusRequest(BaseModel):
+    article_ids: list[int] = Field(min_length=2, max_length=5)
+    provider_mode: str = Field(default="auto")
+
+
+class GenerateMultiSynthesisRequest(BaseModel):
+    article_ids: list[int] = Field(min_length=2, max_length=5)
+    central_focus: str = Field(min_length=5)
+    author_name: str | None = "Juan Vásquez"
+    pillar_id: int | None = None
+    provider_mode: str = Field(default="auto")
+
+
+@router.post("/news/multi-synthesis/suggest-focus")
+def suggest_multi_news_focus_route(
+    req: SuggestFocusRequest,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    require_roles(ctx, *_STAFF)
+    try:
+        from app.services.multi_news_synthesis import suggest_central_focus
+        return suggest_central_focus(
+            db, req.article_ids, provider_mode=req.provider_mode or "auto"
+        )
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+
+@router.post("/news/multi-synthesis/generate")
+def generate_multi_news_synthesis_route(
+    req: GenerateMultiSynthesisRequest,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    require_roles(ctx, *_STAFF)
+    try:
+        from app.services.multi_news_synthesis import generate_centralized_synthesis
+        res = generate_centralized_synthesis(
+            db=db,
+            article_ids=req.article_ids,
+            central_focus=req.central_focus,
+            author_name=req.author_name or "Juan Vásquez",
+            organization_id=ctx.org_id,
+            pillar_id=req.pillar_id,
+            provider_mode=req.provider_mode or "auto",
+        )
+        return res
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, f"Error al generar síntesis multifuente: {exc}") from exc
+
+
+class AutoPilotRequest(BaseModel):
+    pillar_id: int | None = None
+    author_name: str | None = "Juan Vásquez"
+    provider_mode: str = Field(default="auto")
+
+
+@router.post("/news/multi-synthesis/auto-pilot")
+def run_multi_synthesis_auto_pilot_route(
+    req: AutoPilotRequest,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    require_roles(ctx, *_STAFF)
+    try:
+        from app.services.multi_news_synthesis import run_autopilot_synthesis
+        res = run_autopilot_synthesis(
+            db=db,
+            pillar_id=req.pillar_id,
+            author_name=req.author_name or "Juan Vásquez",
+            organization_id=ctx.org_id,
+            provider_mode=req.provider_mode or "auto",
+        )
+        return res
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, f"Error al ejecutar el autopiloto de síntesis: {exc}") from exc
+
+
+@router.get("/news/multi-synthesis/history")
+def get_multi_news_synthesis_history_route(
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    require_roles(ctx, *_STAFF)
+    from app.models.multi_news import MultiNewsSynthesis
+    from app.models.editorial import BlogPost
+
+    query = db.query(MultiNewsSynthesis)
+    if ctx.org_id is not None:
+        query = query.filter(MultiNewsSynthesis.organization_id == ctx.org_id)
+    items = query.order_by(MultiNewsSynthesis.created_at.desc()).limit(20).all()
+    blog_ids = [item.blog_post_id for item in items if item.blog_post_id]
+    posts = {}
+    if blog_ids:
+        for post in db.query(BlogPost).filter(BlogPost.id.in_(blog_ids)).all():
+            posts[post.id] = post
+    return [
+        {
+            "id": item.id,
+            "central_focus": item.central_focus,
+            "source_article_ids": item.source_article_ids,
+            "blog_post_id": item.blog_post_id,
+            "created_at": item.created_at.isoformat() if item.created_at else None,
+            "title": (posts.get(item.blog_post_id).title if posts.get(item.blog_post_id) else None),
+            "slug": (posts.get(item.blog_post_id).slug if posts.get(item.blog_post_id) else None),
+            "content_html": (
+                posts.get(item.blog_post_id).content_html if posts.get(item.blog_post_id) else None
+            ),
+            "status": (posts.get(item.blog_post_id).status if posts.get(item.blog_post_id) else None),
+            "sources_count": len(item.source_article_ids or []),
+        }
+        for item in items
+    ]
+
+

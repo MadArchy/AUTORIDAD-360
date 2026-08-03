@@ -14,11 +14,26 @@ from app.agents.langgraph_runner import describe_pipelines, list_agents, run_age
 def test_list_agents_and_pipelines_engine():
     agents = list_agents()
     names = {a["name"] for a in agents}
-    assert {"scout", "classifier", "verifier", "writer", "reviewer"} <= names
+    assert {
+        "scout",
+        "classifier",
+        "verifier",
+        "writer",
+        "reviewer",
+        "juan_editorial",
+        "juan_ai_governance",
+        "juan_ip_patents",
+    } <= names
     pipes = describe_pipelines()
     assert pipes.get("engine") == "langgraph"
     assert "article" in pipes["modes"]
+    assert "juan_practice" in pipes["modes"]
     assert pipes["steps"]["article"] == ["classifier", "verifier", "writer", "reviewer"]
+    assert pipes["steps"]["juan_practice"] == [
+        "juan_editorial",
+        "juan_ai_governance",
+        "juan_ip_patents",
+    ]
 
 
 def test_route_after_review_retry_and_done():

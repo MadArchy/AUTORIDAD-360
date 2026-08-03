@@ -487,35 +487,55 @@ def suggest_quota_articles(
 
 def seed_juan_profile(db: Session) -> ProfessionalProfile:
     """Perfil piloto Juan Vásquez con pilares y porcentajes de arranque."""
+    from app.services.juan_persona import DEFAULT_JUAN_PERSONA, persist_persona_to_profile
     from app.services.news_typologies import default_search_themes
 
     existing = db.query(ProfessionalProfile).filter_by(slug="juan-vasquez").first()
     if existing:
+        dirty = False
         if not existing.search_themes_json:
             existing.search_themes_json = default_search_themes()
+            dirty = True
+        if not getattr(existing, "persona_json", None):
+            persist_persona_to_profile(db, existing)
+            dirty = True
+        # Enriquecer título/bio sin pisar ediciones muy distintas
+        if not existing.title or "piloto" in (existing.title or "").lower():
+            existing.title = DEFAULT_JUAN_PERSONA["title"]
+            dirty = True
+        if dirty:
             db.commit()
         # No reescribe % en cada seed; usar apply_pdf_pillar_mix / endpoint rebalance
         return get_active_profile(db, slug="juan-vasquez") or existing
 
     profile = ProfessionalProfile(
         slug="juan-vasquez",
-        full_name="Juan Vásquez",
-        title="Abogado / Consultor — IA, gobernanza y posicionamiento MX-US",
+        full_name="Juan J. Vásquez",
+        title=DEFAULT_JUAN_PERSONA["title"],
         bio=(
-            "Perfil piloto de Autoridad 360. Contenido editorial alineado a "
-            "IA, gobernanza, Propiedad Intelectual y el eje México–Estados Unidos."
+            "Abogado de patentes e IP y counsel de AI Readiness & Governance. "
+            "Member en Whitaker Chalk (Fort Worth/Dallas). Formación en ingeniería "
+            "eléctrica y ciberseguridad (USAF); JD St. Mary's; Texas Bar 24088582; "
+            "USPTO. Práctica en prosecution, FTO, AI/ML, privacy y governance "
+            "para GC, boards, CISOs y compliance. Thought leadership MX–US."
         ),
         services_json=[
-            "Asesoría corporativa transfronteriza",
-            "Compliance y regulación",
-            "Estrategia de posicionamiento profesional",
+            "AI Readiness Assessment",
+            "Governance program build-out",
+            "Patent prosecution & FTO",
+            "AI + IP / inventorship counsel",
+            "Estrategia de posicionamiento profesional MX–US",
         ],
         audiences_json=[
+            "General counsel",
+            "CEOs & boards",
+            "CISOs",
+            "Compliance officers",
             "Empresarios MX con operaciones en US",
             "Founders / legal tech",
-            "Directores de cumplimiento",
         ],
         markets_json={"primary": ["MX", "US"]},
+        persona_json=dict(DEFAULT_JUAN_PERSONA),
         is_active=True,
     )
     db.add(profile)

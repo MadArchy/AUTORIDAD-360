@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Cpu,
   Home,
+  Layers,
   LogOut,
   Newspaper,
   PanelLeftClose,
@@ -20,6 +21,7 @@ const NAV_GROUPS = [
     items: [
       ['hoy', 'Hoy', Home],
       ['live', 'Noticias en vivo', Newspaper],
+      ['multisynthesis', 'Síntesis Multinoticia', Layers],
     ],
   },
   {
@@ -36,6 +38,7 @@ const ALL_ITEMS = NAV_GROUPS.flatMap(g => g.items);
 const TITLES = {
   ...Object.fromEntries(ALL_ITEMS.map(([id, label]) => [id, label])),
   multiformat: 'Estudio de contenido',
+  multisynthesis: 'Síntesis Multinoticia con Foco Único',
 };
 
 const FLOW_STEPS = [
@@ -48,6 +51,7 @@ const FLOW_STEPS = [
 const SUBTITLES = {
   hoy: 'Prioriza una señal y llévala a producción.',
   live: 'Explora y filtra el inventario editorial.',
+  multisynthesis: 'Recibe un solo artículo fusionado a partir del mejor foco, sin seleccionar noticias.',
   multiformat: 'Convierte una noticia en piezas, creatividades y distribución.',
   profile: 'Define el enfoque editorial y los temas que alimentan el sistema.',
   aigateway: 'Configura los motores que asisten la operación editorial.',

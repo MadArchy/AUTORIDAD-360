@@ -20,6 +20,7 @@ _JOB_QUEUES: dict[str, str] = {
     "analyze_article": "llm",
     "content_package": "llm",
     "blog_draft": "llm",
+    "agent_auto_cycle": "llm",
 }
 
 

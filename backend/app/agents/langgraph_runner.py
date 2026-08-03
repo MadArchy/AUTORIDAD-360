@@ -124,8 +124,8 @@ def run_pipeline(
 ) -> dict[str, Any]:
     if mode not in PIPELINE_STEPS:
         raise ValueError(f"mode inválido: {mode}. Usa {list(PIPELINE_STEPS)}")
-    if mode == "article" and not article_id:
-        raise ValueError("pipeline article requiere article_id")
+    if mode in {"article", "juan_practice"} and not article_id:
+        raise ValueError(f"pipeline {mode} requiere article_id")
 
     run_id = new_run_id()
     started = time.perf_counter()

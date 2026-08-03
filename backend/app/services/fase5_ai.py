@@ -245,20 +245,49 @@ def _call_ollama(provider: AIProvider, prompt: str) -> str:
     return content
 
 
+def _openai_model_is_reasoning_family(model_name: str | None) -> bool:
+    """gpt-5 / o-series: no aceptan temperature≠1 ni max_tokens legacy."""
+    name = (model_name or "").strip().lower()
+    if not name:
+        return False
+    return (
+        name.startswith("gpt-5")
+        or name.startswith("o1")
+        or name.startswith("o3")
+        or name.startswith("o4")
+    )
+
+
 def _call_openai_compatible(provider: AIProvider, prompt: str, api_key: str) -> str:
     base = (provider.base_url or "https://api.openai.com/v1").rstrip("/")
     url = f"{base}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    payload = {
-        "model": provider.model_name,
+    model = provider.model_name
+    payload: dict[str, Any] = {
+        "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.2,
     }
+    # gpt-5 / o-series rechazan temperature distinto del default (→ HTTP 400)
+    if _openai_model_is_reasoning_family(model):
+        payload["max_completion_tokens"] = 8192
+    else:
+        payload["temperature"] = 0.2
+        payload["max_tokens"] = 4096
     with httpx.Client(timeout=settings.llm_request_timeout_seconds) as client:
         response = client.post(url, headers=headers, json=payload)
-        response.raise_for_status()
+        if response.status_code >= 400:
+            detail = (response.text or "")[:500]
+            raise RuntimeError(
+                f"OpenAI {response.status_code} ({model}): {detail}"
+            )
         data = response.json()
-    return data["choices"][0]["message"]["content"]
+    message = (data.get("choices") or [{}])[0].get("message") or {}
+    content = (message.get("content") or "").strip()
+    if not content:
+        # Algunos modelos de razonamiento pueden devolver vacío si el presupuesto
+        # se va en reasoning; reintentar con más tokens no siempre aplica aquí.
+        raise ValueError(f"OpenAI ({model}) returned empty content")
+    return content
 
 
 def _call_anthropic(provider: AIProvider, prompt: str, api_key: str) -> str:

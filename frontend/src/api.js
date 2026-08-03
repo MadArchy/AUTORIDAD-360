@@ -402,4 +402,47 @@ export function normalizeDashboard(raw) {
   };
 }
 
+export async function suggestMultiNewsFocus(article_ids, provider_mode = 'auto') {
+  return api('/news/multi-synthesis/suggest-focus', {
+    method: 'POST',
+    body: JSON.stringify({ article_ids, provider_mode }),
+  });
+}
+
+export async function generateMultiNewsSynthesis({
+  article_ids,
+  central_focus,
+  author_name,
+  pillar_id,
+  provider_mode = 'auto',
+}) {
+  return api('/news/multi-synthesis/generate', {
+    method: 'POST',
+    body: JSON.stringify({
+      article_ids,
+      central_focus,
+      author_name,
+      pillar_id,
+      provider_mode,
+    }),
+  });
+}
+
+export async function getMultiNewsHistory() {
+  return api('/news/multi-synthesis/history');
+}
+
+export async function runAutoPilotSynthesis({
+  pillar_id,
+  author_name,
+  provider_mode = 'auto',
+}) {
+  return api('/news/multi-synthesis/auto-pilot', {
+    method: 'POST',
+    body: JSON.stringify({ pillar_id, author_name, provider_mode }),
+  });
+}
+
 export { API_BASE };
+
+

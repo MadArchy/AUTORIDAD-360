@@ -178,6 +178,127 @@ def tool_trend_ad_notes(
     }
 
 
+def _load_article_for_brief(db: Session, article_id: int | None) -> NewsArticle | None:
+    if not article_id:
+        return None
+    query = db.query(NewsArticle).filter(NewsArticle.id == article_id)
+    if db.info.get("organization_id") is not None:
+        query = query.filter(NewsArticle.organization_id == db.info["organization_id"])
+    return query.first()
+
+
+def _draft_practice_brief(
+    db: Session,
+    *,
+    practice: str,
+    article_id: int | None = None,
+    topic: str | None = None,
+) -> dict[str, Any]:
+    """Brief especializado con voz Juan (AI governance o IP/patents)."""
+    from app.services import fase5_ai
+    from app.services.juan_persona import LEGAL_DISCLAIMER, get_juan_persona_block
+
+    article = _load_article_for_brief(db, article_id)
+    if article_id and not article:
+        raise ValueError(f"Article {article_id} not found")
+
+    persona = get_juan_persona_block(
+        db,
+        organization_id=db.info.get("organization_id"),
+        practice=practice,
+    )
+    source_block = ""
+    if article:
+        snippet = (article.full_text or article.summary or "")[:2500]
+        source_block = (
+            f"\nFUENTE ANCLA\nTítulo: {article.title}\n"
+            f"Medio: {article.source_name}\nURL: {article.source_url}\n"
+            f"Texto:\n{snippet}\n"
+        )
+    topic_line = topic or (article.title if article else "Tendencia de alto impacto en la práctica")
+
+    if practice == "ai_governance":
+        angle = (
+            "Ángulo AI Readiness & Governance: Education (gente), Technology (postura real de tools/datos) "
+            "y Governance (frameworks que operan). Evita vender 'solo una policy'."
+        )
+    elif practice == "ip_patents":
+        angle = (
+            "Ángulo IP/Patents: prosecution, FTO, inventorship, AI+IP, portafolio alineado a producto. "
+            "Sé preciso; no inventes números de patente ni outcomes."
+        )
+    else:
+        angle = "Ángulo editorial de autoridad para líderes que cargan el riesgo."
+
+    prompt = f"""{persona}
+
+{angle}
+
+TEMA / FOCO: {topic_line}
+{source_block}
+
+Redacta un BRIEF ejecutivo en markdown (400–700 palabras) con:
+1. Hecho ancla (si hay fuente)
+2. Lectura de riesgo / oportunidad para GC, board o CISO
+3. "Mi perspectiva"
+4. 3 acciones concretas esta semana
+5. Disclaimer al final
+
+Responde SOLO markdown. Disclaimer obligatorio:
+{LEGAL_DISCLAIMER}
+"""
+    text, meta = fase5_ai.complete(db, task_type="generate_content", prompt=prompt)
+    return {
+        "practice": practice,
+        "article_id": article.id if article else None,
+        "topic": topic_line,
+        "brief_markdown": (text or "").strip(),
+        "model_used": (meta or {}).get("model_used"),
+        "disclaimer": LEGAL_DISCLAIMER,
+    }
+
+
+def tool_draft_juan_editorial(
+    db: Session,
+    *,
+    article_id: int,
+    languages: list[str] | None = None,
+    prefer_llm: bool = True,
+) -> dict[str, Any]:
+    """Paquete multi-formato con voz Juan (wrapper de write_package)."""
+    result = tool_write_package(
+        db,
+        article_id=article_id,
+        languages=languages,
+        prefer_llm=prefer_llm,
+    )
+    result["practice"] = "editorial"
+    result["persona"] = "juan_vasquez"
+    return result
+
+
+def tool_draft_ai_governance_brief(
+    db: Session,
+    *,
+    article_id: int | None = None,
+    topic: str | None = None,
+) -> dict[str, Any]:
+    return _draft_practice_brief(
+        db, practice="ai_governance", article_id=article_id, topic=topic
+    )
+
+
+def tool_draft_ip_patent_brief(
+    db: Session,
+    *,
+    article_id: int | None = None,
+    topic: str | None = None,
+) -> dict[str, Any]:
+    return _draft_practice_brief(
+        db, practice="ip_patents", article_id=article_id, topic=topic
+    )
+
+
 # --- Esquemas Pydantic (args de StructuredTool) ---
 
 
@@ -209,6 +330,11 @@ class ReviewPackageInput(BaseModel):
 class TrendAdNotesInput(BaseModel):
     slug: str = Field(default="juan-vasquez")
     max_queries: int = Field(default=12, ge=4, le=20)
+
+
+class PracticeBriefInput(BaseModel):
+    article_id: int | None = Field(default=None, ge=1)
+    topic: str | None = None
 
 
 TOOL_META: dict[str, dict[str, Any]] = {
@@ -249,6 +375,30 @@ TOOL_META: dict[str, dict[str, Any]] = {
         ),
         "args_schema": TrendAdNotesInput,
         "fn": tool_trend_ad_notes,
+    },
+    "draft_juan_editorial": {
+        "description": (
+            "Redactor Juan: genera paquete multi-formato con voz de autoridad "
+            "(IP, AI readiness, gobernanza) desde un artículo verificado"
+        ),
+        "args_schema": WritePackageInput,
+        "fn": tool_draft_juan_editorial,
+    },
+    "draft_ai_governance_brief": {
+        "description": (
+            "Brief AI Readiness & Governance (Education / Technology / Governance) "
+            "en voz Juan; opcionalmente anclado a un article_id"
+        ),
+        "args_schema": PracticeBriefInput,
+        "fn": tool_draft_ai_governance_brief,
+    },
+    "draft_ip_patent_brief": {
+        "description": (
+            "Brief IP/Patents (prosecution, FTO, inventorship, AI+IP) en voz Juan; "
+            "opcionalmente anclado a un article_id"
+        ),
+        "args_schema": PracticeBriefInput,
+        "fn": tool_draft_ip_patent_brief,
     },
 }
 
