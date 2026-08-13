@@ -112,8 +112,26 @@
 
         <!-- ==================== PESTAÑA: HOY ==================== -->
         <section class="tab-view active" id="tab-hoy">
+
+          <!-- BANNER HERO: MODO PILOTO AUTOMÁTICO (1-CLICK) -->
+          <div class="autopilot-hero">
+            <div>
+              <span class="badge badge-primary" style="margin-bottom: 8px;">
+                <i data-lucide="zap" style="width: 12px; display: inline;"></i> Flujo 100% Automatizado
+              </span>
+              <h3 style="font-size: 1.35rem; margin-bottom: 6px;">Modo Piloto Automático Diario</h3>
+              <p style="font-size: 0.88rem; color: var(--text-muted); max-width: 600px;">
+                Escanea noticias en tiempo real, detecta el pilar con déficit de cuota, redacta el ensayo C-Level, genera los 4 formatos y los agenda en tu calendario.
+              </p>
+            </div>
+            <button class="btn-autopilot" onclick="window.AppUI.runAutoPilot()">
+              <i data-lucide="zap"></i> Ejecutar Ciclo Diario
+            </button>
+          </div>
+
           <!-- KPIs -->
           <div class="grid-cards">
+
             <div class="stat-card">
               <div class="stat-icon primary"><i data-lucide="newspaper"></i></div>
               <div>
@@ -290,13 +308,19 @@
               <div class="card">
                 <div class="card-header">
                   <h4 class="card-title">Post para LinkedIn</h4>
-                  <button class="btn btn-secondary btn-sm" onclick="window.ExportService.copyToClipboard(document.getElementById('fmt-linkedin-content').textContent, 'Post de LinkedIn copiado')">
-                    <i data-lucide="copy" style="width: 14px;"></i> Copiar
-                  </button>
+                  <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-secondary btn-sm" onclick="window.ExportService.copyToClipboard(document.getElementById('fmt-linkedin-content').textContent, 'Post de LinkedIn copiado')">
+                      <i data-lucide="copy" style="width: 14px;"></i> Copiar
+                    </button>
+                    <button class="btn btn-linkedin btn-sm" onclick="window.AppUI.shareToLinkedIn(document.getElementById('fmt-linkedin-content').textContent)">
+                      <i data-lucide="external-link" style="width: 14px;"></i> Publicar en LinkedIn
+                    </button>
+                  </div>
                 </div>
                 <pre id="fmt-linkedin-content" style="white-space: pre-wrap; font-family: var(--font-sans); font-size: 0.9rem; line-height: 1.6; color: var(--text-main); background: var(--bg-input); padding: 18px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);"></pre>
               </div>
             </div>
+
 
             <!-- Panel Carrusel -->
             <div class="format-panel" id="fmt-panel-carousel" style="display: none;">
@@ -503,6 +527,79 @@
 
       </div>
     </main>
+  </div>
+
+  <!-- MODAL: PIPELINE DEL PILOTO AUTOMÁTICO -->
+  <div class="modal-overlay" id="autopilot-modal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div class="stat-icon primary" style="width: 32px; height: 32px; font-size: 1rem;">
+            <i data-lucide="zap"></i>
+          </div>
+          <div>
+            <h3 style="font-size: 1.15rem;">Ejecutando Piloto Automático</h3>
+            <p style="font-size: 0.78rem; color: var(--text-dim);">Ciclo autónomo de inteligencia editorial de Autoridad 360</p>
+          </div>
+        </div>
+        <button class="btn btn-icon btn-outline btn-sm" onclick="document.getElementById('autopilot-modal').classList.remove('active')">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="ap-steps-list">
+          <div class="ap-step" id="ap-step-1">
+            <div class="ap-step-num">1</div>
+            <div>
+              <strong>Escaneo de Noticias en Vivo (RSS)</strong>
+              <div class="ap-step-desc" style="font-size: 0.78rem; color: var(--text-muted);">En espera...</div>
+            </div>
+          </div>
+
+          <div class="ap-step" id="ap-step-2">
+            <div class="ap-step-num">2</div>
+            <div>
+              <strong>Detección de Déficit de Cuota (Pilares)</strong>
+              <div class="ap-step-desc" style="font-size: 0.78rem; color: var(--text-muted);">En espera...</div>
+            </div>
+          </div>
+
+          <div class="ap-step" id="ap-step-3">
+            <div class="ap-step-num">3</div>
+            <div>
+              <strong>Selección y Cruce de Fuentes Críticas</strong>
+              <div class="ap-step-desc" style="font-size: 0.78rem; color: var(--text-muted);">En espera...</div>
+            </div>
+          </div>
+
+          <div class="ap-step" id="ap-step-4">
+            <div class="ap-step-num">4</div>
+            <div>
+              <strong>Redacción de Ensayo Analítico de Autoridad</strong>
+              <div class="ap-step-desc" style="font-size: 0.78rem; color: var(--text-muted);">En espera...</div>
+            </div>
+          </div>
+
+          <div class="ap-step" id="ap-step-5">
+            <div class="ap-step-num">5</div>
+            <div>
+              <strong>Generación Multi-Formato & Calendario</strong>
+              <div class="ap-step-desc" style="font-size: 0.78rem; color: var(--text-muted);">En espera...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="document.getElementById('autopilot-modal').classList.remove('active')">
+          Cerrar
+        </button>
+        <button class="btn btn-primary" id="btn-ap-view-batch" style="display: none;" onclick="document.getElementById('autopilot-modal').classList.remove('active'); window.AppUI.switchTab('multiformat');">
+          <i data-lucide="layers"></i> Ver Formatos Generados
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- Contenedor de Notificaciones Toast -->

@@ -134,7 +134,14 @@ class NewsService {
     });
   }
 
+  getTopNewsForPillar(pillarSlug, limit = 2) {
+    const matching = this.articles.filter(a => a.pillar_slug === pillarSlug);
+    if (matching.length === 0) return this.articles.slice(0, limit);
+    return matching.sort((a, b) => b.score - a.score).slice(0, limit);
+  }
+
   toggleSelect(id) {
+
     if (this.selectedArticleIds.has(id)) {
       this.selectedArticleIds.delete(id);
     } else {

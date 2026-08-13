@@ -23,6 +23,86 @@ class AppUI {
     }
   }
 
+  // ==========================================
+  // MODO PILOTO AUTOMÁTICO (1-CLICK PIPELINE)
+  // ==========================================
+  async runAutoPilot() {
+    const modalEl = document.getElementById('autopilot-modal');
+    if (modalEl) modalEl.classList.add('active');
+
+    const updateStep = (stepNum, text, status = 'active') => {
+      const stepEl = document.getElementById(`ap-step-${stepNum}`);
+      if (stepEl) {
+        stepEl.className = `ap-step ap-step-${status}`;
+        const descEl = stepEl.querySelector('.ap-step-desc');
+        if (descEl) descEl.textContent = text;
+      }
+    };
+
+    try {
+      // Paso 1: Escanear fuentes RSS
+      updateStep(1, 'Actualizando feeds RSS en tiempo real...', 'running');
+      await window.NewsService.fetchLiveNews();
+      updateStep(1, `${window.NewsService.articles.length} noticias activas analizadas`, 'done');
+
+      // Paso 2: Detección de Déficit de Pilar
+      updateStep(2, 'Calculando cuotas editoriales de Juan Vásquez...', 'running');
+      await new Promise(r => setTimeout(r, 400));
+      const { pillar, deficit } = window.AppState.getDeficitPillar();
+      updateStep(2, `Pilar prioritario: ${pillar.name} (Déficit: +${deficit}%)`, 'done');
+
+      // Paso 3: Selección de Noticias Relevantes
+      updateStep(3, `Seleccionando las 2 mejores noticias de ${pillar.name}...`, 'running');
+      const selectedNews = window.NewsService.getTopNewsForPillar(pillar.slug, 2);
+      await new Promise(r => setTimeout(r, 300));
+      updateStep(3, `Fuentes: "${selectedNews[0]?.title?.slice(0, 45)}..."`, 'done');
+
+      // Paso 4: Generación de Síntesis de Autoridad
+      updateStep(4, 'Redactando ensayo analítico C-Level con IA...', 'running');
+      const synthesis = await window.MultiNewsSynthesis.generateSynthesis({
+        articles: selectedNews,
+        pillarSlug: pillar.slug
+      });
+      this.currentSynthesis = synthesis;
+      updateStep(4, 'Ensayo ejecutivo estructurado con éxito', 'done');
+
+      // Paso 5: Producción Multi-Formato & Calendario
+      updateStep(5, 'Desglosando en LinkedIn, Carrusel, Video y Newsletter...', 'running');
+      const pkg = await window.MultiFormatStudio.generateAllFormats({
+        topic: synthesis.focus,
+        coreArticle: selectedNews[0]
+      });
+      this.currentPackage = pkg;
+
+      // Auto-agendar en calendario
+      window.AppState.schedulePackageToCalendar(pkg, pillar.name);
+      window.AppState.incrementPillarCount(pillar.slug);
+      updateStep(5, '4 formatos listos y programados en el calendario', 'done');
+
+      this.renderAll();
+      this.showToast('🚀 ¡Ciclo del Piloto Automático completado con éxito!', 'success');
+
+      // Mostrar botón de revisar lote
+      const btnViewBatch = document.getElementById('btn-ap-view-batch');
+      if (btnViewBatch) {
+        btnViewBatch.style.display = 'inline-flex';
+      }
+
+    } catch (err) {
+      console.error('[AutoPilot Error]:', err);
+      this.showToast(`Error en piloto automático: ${err.message}`, 'error');
+    }
+  }
+
+  // Publicación rápida en LinkedIn (Deep-link con texto precargado)
+  shareToLinkedIn(text) {
+    const cleanText = encodeURIComponent(text);
+    const url = `https://www.linkedin.com/feed/?shareActive=true&text=${cleanText}`;
+    window.open(url, '_blank');
+    this.showToast('Abriendo LinkedIn con el texto pre-cargado...', 'info');
+  }
+
+
   bindEvents() {
     // Navegación por tabs en la barra lateral
     document.querySelectorAll('.nav-item').forEach(item => {

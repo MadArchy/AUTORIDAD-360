@@ -161,6 +161,53 @@ class StateManager {
     this.save(STORAGE_KEYS.WORKED_ARTICLES, Array.from(this.workedArticleIds));
   }
 
+  // Calcula qué pilar tiene mayor déficit porcentual vs meta
+  getDeficitPillar() {
+    const totalPieces = this.pillars.reduce((acc, p) => acc + (p.current_count || 0), 0) || 1;
+    let maxDeficit = -999;
+    let deficitPillar = this.pillars[0];
+
+    this.pillars.forEach(p => {
+      const currentPct = Math.round(((p.current_count || 0) / totalPieces) * 100);
+      const targetPct = p.target_pct || 25;
+      const deficit = targetPct - currentPct;
+      if (deficit > maxDeficit) {
+        maxDeficit = deficit;
+        deficitPillar = p;
+      }
+    });
+
+    return { pillar: deficitPillar, deficit: maxDeficit };
+  }
+
+  // Incrementa el conteo de piezas de un pilar cuando se aprueba
+  incrementPillarCount(pillarSlug) {
+    const updated = this.pillars.map(p => {
+      if (p.slug === pillarSlug) {
+        return { ...p, current_count: (p.current_count || 0) + 1 };
+      }
+      return p;
+    });
+    this.savePillars(updated);
+  }
+
+  // Auto-agenda el paquete generado en el calendario editorial
+  schedulePackageToCalendar(pkg, pillarName) {
+    const today = new Date();
+    const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+    
+    const events = [
+      { id: Date.now() + 1, day: 'Lunes', time: '08:30 AM', format: 'Ensayo / Post Largo', title: pkg.topic, status: 'approved', pillar: pillarName },
+      { id: Date.now() + 2, day: 'Miércoles', time: '11:00 AM', format: 'Carrusel de 5 Slides', title: `Carrusel: ${pkg.topic}`, status: 'scheduled', pillar: pillarName },
+      { id: Date.now() + 3, day: 'Jueves', time: '06:00 PM', format: 'Guion de Video', title: `Video: ${pkg.topic}`, status: 'scheduled', pillar: pillarName },
+      { id: Date.now() + 4, day: 'Viernes', time: '09:00 AM', format: 'Newsletter Semanal', title: `Boletín: ${pkg.topic}`, status: 'scheduled', pillar: pillarName },
+    ];
+
+    this.calendar = [...events, ...this.calendar.slice(0, 8)];
+    this.save(STORAGE_KEYS.CALENDAR, this.calendar);
+    return events;
+  }
+
   exportBackup() {
     const backup = {
       profile: this.profile,
@@ -193,3 +240,4 @@ class StateManager {
 }
 
 window.AppState = new StateManager();
+
