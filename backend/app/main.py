@@ -5,6 +5,7 @@ import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
@@ -141,16 +142,45 @@ _media_dir = Path(__file__).resolve().parent.parent / "media"
 _media_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=str(_media_dir)), name="media")
 
+# Frontend React — sirve el build compilado (frontend/dist/)
+# Permite acceder a la app desde el navegador sin servidor separado
+_frontend_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
-@app.get("/")
-def root():
-    return {
-        "status": "online",
-        "service": "Autoridad 360",
-        "phase": "1-7",
-        "app_env": settings.app_env,
-        "client": settings.client_name,
-        "docs_url": "/docs",
-        "allow_header_auth": settings.allow_header_auth,
-    }
+if _frontend_dist.exists():
+    # Archivos estáticos de assets (JS, CSS, imágenes del build)
+    app.mount("/assets", StaticFiles(directory=str(_frontend_dist / "assets")), name="frontend-assets")
+
+    @app.get("/", include_in_schema=False)
+    def serve_spa_root():
+        """Sirve el index.html del frontend React."""
+        return FileResponse(str(_frontend_dist / "index.html"))
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def serve_spa_fallback(path: str):
+        """Catch-all para React Router — cualquier ruta desconocida devuelve index.html."""
+        # No interceptar rutas de la API
+        if path.startswith(("api/", "docs", "redoc", "openapi", "media/")):
+            return HTMLResponse(status_code=404, content="Not Found")
+        index_file = _frontend_dist / "index.html"
+        if index_file.exists():
+            return FileResponse(str(index_file))
+        return HTMLResponse(status_code=404, content="Frontend no compilado. Ejecuta: npm run build")
+else:
+    logger.warning(
+        "[frontend] No se encontró frontend/dist/. "
+        "Ejecuta 'npm run build' en la carpeta frontend/ para servir la UI."
+    )
+
+    @app.get("/", include_in_schema=False)
+    def root():
+        return {
+            "status": "online",
+            "service": "Autoridad 360",
+            "phase": "1-7",
+            "app_env": settings.app_env,
+            "client": settings.client_name,
+            "docs_url": "/docs",
+            "allow_header_auth": settings.allow_header_auth,
+            "warning": "Frontend no compilado — corre npm run build en frontend/",
+        }
 

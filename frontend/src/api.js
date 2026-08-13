@@ -1,7 +1,8 @@
 /** Cliente API canónico Autoridad 360 (Fases 1–7).
- * Docker / piloto: VITE_API_URL=http://127.0.0.1:8000/api/v1
+ * Producción (servido desde FastAPI): VITE_API_URL no necesario — usa mismo origen.
+ * Docker / piloto local: VITE_API_URL=http://127.0.0.1:8000/api/v1
  */
-const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
+const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 
 const ORG_KEY = 'org_slug';
 const TOKEN_KEY = 'jwt_token';
