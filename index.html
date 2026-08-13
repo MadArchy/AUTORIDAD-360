@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Autoridad 360 — Inteligencia Editorial & Posicionamiento C-Level</title>
+  <meta name="description" content="Plataforma de inteligencia editorial para el posicionamiento de líderes y directivos en inteligencia artificial, gobernanza y estrategia corporativa.">
+
+  <!-- Google Fonts: Inter & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Sistema de Estilos -->
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <div class="app-wrapper">
+
+    <!-- BARRA LATERAL (SIDEBAR) -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-badge">
+          <i data-lucide="shield-check" style="width: 22px; height: 22px;"></i>
+        </div>
+        <div>
+          <div class="brand-title">AUTORIDAD 360</div>
+          <div class="brand-subtitle">Inteligencia Editorial</div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-category">Flujo Editorial</div>
+        <a class="nav-item active" data-tab="hoy">
+          <i data-lucide="layout-dashboard"></i>
+          <span>Hoy</span>
+          <span class="nav-badge" id="badge-hoy">4 Nuevas</span>
+        </a>
+        <a class="nav-item" data-tab="news">
+          <i data-lucide="newspaper"></i>
+          <span>Noticias en Vivo</span>
+          <span class="nav-badge" id="badge-news-count">12</span>
+        </a>
+        <a class="nav-item" data-tab="synthesis">
+          <i data-lucide="sparkles"></i>
+          <span>Síntesis Multi-Noticia</span>
+        </a>
+        <a class="nav-item" data-tab="multiformat">
+          <i data-lucide="layers"></i>
+          <span>Estudio Multi-Formato</span>
+        </a>
+        <a class="nav-item" data-tab="calendar">
+          <i data-lucide="calendar"></i>
+          <span>Calendario & Cadencia</span>
+        </a>
+
+        <div class="nav-category">Estrategia & IA</div>
+        <a class="nav-item" data-tab="profile">
+          <i data-lucide="user-check"></i>
+          <span>Perfil & Pilares</span>
+        </a>
+        <a class="nav-item" data-tab="aihub">
+          <i data-lucide="cpu"></i>
+          <span>Gateway de IA</span>
+        </a>
+        <a class="nav-item" data-tab="metrics">
+          <i data-lucide="bar-chart-2"></i>
+          <span>Métricas & Leads</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="profile-card">
+          <div class="profile-avatar">JV</div>
+          <div class="profile-info">
+            <div class="profile-name" id="sidebar-profile-name">Juan Vásquez</div>
+            <div class="profile-role" id="sidebar-profile-role">Especialista en IA & Estrategia</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CONTENIDO PRINCIPAL -->
+    <main class="main-content">
+
+      <!-- BARRA SUPERIOR (TOPBAR) -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="btn btn-icon btn-secondary mobile-menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')">
+            <i data-lucide="menu"></i>
+          </button>
+          <h2 class="page-heading" id="topbar-page-heading">Centro de Mando Editorial — Hoy</h2>
+        </div>
+
+        <div class="topbar-actions">
+          <div class="status-pill">
+            <span class="status-dot pulsing"></span>
+            <span>100% Web • Activo</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="window.ExportService.downloadFile(window.AppState.exportBackup(), 'Autoridad360_Respaldo.json', 'application/json')">
+            <i data-lucide="download" style="width: 14px;"></i> Respaldo JSON
+          </button>
+        </div>
+      </header>
+
+      <!-- CONTENEDOR DE PESTAÑAS -->
+      <div class="page-container">
+
+        <!-- ==================== PESTAÑA: HOY ==================== -->
+        <section class="tab-view active" id="tab-hoy">
+          <!-- KPIs -->
+          <div class="grid-cards">
+            <div class="stat-card">
+              <div class="stat-icon primary"><i data-lucide="newspaper"></i></div>
+              <div>
+                <div class="stat-value" id="kpi-news-count">12</div>
+                <div class="stat-label">Noticias en Radar</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon cyan"><i data-lucide="file-check"></i></div>
+              <div>
+                <div class="stat-value" id="kpi-pieces-count">28</div>
+                <div class="stat-label">Piezas de Autoridad</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon emerald"><i data-lucide="target"></i></div>
+              <div>
+                <div class="stat-value" id="kpi-leads-count">19</div>
+                <div class="stat-label">Leads Calificados B2B</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon amber"><i data-lucide="trending-up"></i></div>
+              <div>
+                <div class="stat-value">13.4%</div>
+                <div class="stat-label">Conversión Editorial</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pilares Estratégicos -->
+          <div style="margin-bottom: 32px;">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title"><i data-lucide="pie-chart" style="color: var(--primary);"></i> Balance de Pilares Editoriales</h3>
+                <p class="card-description">Distribución porcentual de contenido para el posicionamiento de Juan Vásquez.</p>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="window.AppUI.switchTab('profile')">Ajustar Cuotas</button>
+            </div>
+            <div class="grid-cards" id="hoy-pillars-container"></div>
+          </div>
+
+          <!-- Noticias Recomendadas para Sintetizar Hoy -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title"><i data-lucide="zap" style="color: var(--accent-amber);"></i> Radar de Alta Relevancia Hoy</h3>
+                <p class="card-description">Selección de noticias con mayor impacto estratégico y oportunidad editorial.</p>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="window.AppUI.switchTab('news')">
+                <i data-lucide="arrow-right"></i> Ver Todo el Radar
+              </button>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px;" id="hoy-recommended-news"></div>
+          </div>
+        </section>
+
+
+        <!-- ==================== PESTAÑA: NOTICIAS EN VIVO ==================== -->
+        <section class="tab-view" id="tab-news">
+          <div class="card" style="margin-bottom: 24px;">
+            <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between;">
+              <div style="display: flex; flex-wrap: wrap; gap: 12px; flex: 1; min-width: 300px;">
+                <input type="text" id="news-search-input" class="form-input" style="max-width: 320px;" placeholder="Buscar noticias por palabra clave...">
+                <select id="news-pillar-filter" class="form-select" style="max-width: 220px;">
+                  <option value="">Todos los pilares</option>
+                </select>
+              </div>
+              <div style="display: flex; gap: 12px; align-items: center;">
+                <button class="btn btn-secondary" id="btn-refresh-news">
+                  <i data-lucide="refresh-cw"></i> Actualizar RSS
+                </button>
+                <button class="btn btn-primary" id="btn-generate-synthesis">
+                  <i data-lucide="sparkles"></i> Sintetizar (<span id="selected-news-count">0</span>)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 14px;" id="news-articles-list"></div>
+        </section>
+
+
+        <!-- ==================== PESTAÑA: SÍNTESIS MULTI-NOTICIA ==================== -->
+        <section class="tab-view" id="tab-synthesis">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title"><i data-lucide="sparkles" style="color: var(--primary);"></i> Laboratorio de Síntesis Ejecutiva</h3>
+                <p class="card-description">Cruza hechos de múltiples fuentes y genera un ensayo analítico de alto impacto para C-Level.</p>
+              </div>
+            </div>
+
+            <form id="form-synthesis">
+              <div class="form-group">
+                <label class="form-label">Fuentes Seleccionadas para el Cruce</label>
+                <div id="synthesis-sources-list">
+                  <div style="color: var(--text-dim); font-size: 0.85rem; padding: 12px; background: var(--bg-surface-raised); border-radius: var(--radius-md);">
+                    No has seleccionado noticias específicas del radar. Se utilizarán las noticias más recientes por defecto.
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid-2">
+                <div class="form-group">
+                  <label class="form-label">Enfoque o Tesis Editorial</label>
+                  <input type="text" id="synthesis-focus-input" class="form-input" placeholder="Ej: Cómo la nueva regulación exige auditorías inmediatas en el C-Suite...">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Pilar Temático de Destino</label>
+                  <select id="synthesis-pillar-select" class="form-select"></select>
+                </div>
+              </div>
+
+              <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">
+                <i data-lucide="sparkles"></i> Generar Síntesis de Autoridad
+              </button>
+            </form>
+          </div>
+
+          <div id="synthesis-result-container" style="display: none;"></div>
+        </section>
+
+
+        <!-- ==================== PESTAÑA: ESTUDIO MULTI-FORMATO ==================== -->
+        <section class="tab-view" id="tab-multiformat">
+          <div class="card" style="margin-bottom: 24px;">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title"><i data-lucide="layers" style="color: var(--accent-cyan);"></i> Generador Multi-Canal</h3>
+                <p class="card-description">Transforma una idea o noticia en 4 piezas coordinadas: LinkedIn, Carrusel, Guion y Newsletter.</p>
+              </div>
+            </div>
+
+            <form id="form-multiformat">
+              <div class="grid-2">
+                <div class="form-group">
+                  <label class="form-label">Tema o Noticia Central</label>
+                  <input type="text" id="multiformat-topic-input" class="form-input" placeholder="Ej: Implementación de agentes de IA y retorno de inversión en empresas B2B" required>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Idioma</label>
+                  <select id="multiformat-lang-select" class="form-select">
+                    <option value="es">Español (Latinoamérica / México)</option>
+                    <option value="en">Inglés (Bilingual Global)</option>
+                  </select>
+                </div>
+              </div>
+
+              <button type="submit" class="btn btn-primary" style="width: 100%;">
+                <i data-lucide="sparkles"></i> Generar Paquete de Contenido
+              </button>
+            </form>
+          </div>
+
+          <div id="multiformat-results-container" style="display: none;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px;">
+              <button class="btn btn-outline btn-sm format-subtab-btn active" data-format="linkedin">
+                <i data-lucide="linkedin"></i> Post LinkedIn
+              </button>
+              <button class="btn btn-outline btn-sm format-subtab-btn" data-format="carousel">
+                <i data-lucide="sliders"></i> Diapositivas Carrusel
+              </button>
+              <button class="btn btn-outline btn-sm format-subtab-btn" data-format="video">
+                <i data-lucide="video"></i> Guion de Video
+              </button>
+              <button class="btn btn-outline btn-sm format-subtab-btn" data-format="newsletter">
+                <i data-lucide="mail"></i> Edición Newsletter
+              </button>
+            </div>
+
+            <!-- Panel LinkedIn -->
+            <div class="format-panel" id="fmt-panel-linkedin">
+              <div class="card">
+                <div class="card-header">
+                  <h4 class="card-title">Post para LinkedIn</h4>
+                  <button class="btn btn-secondary btn-sm" onclick="window.ExportService.copyToClipboard(document.getElementById('fmt-linkedin-content').textContent, 'Post de LinkedIn copiado')">
+                    <i data-lucide="copy" style="width: 14px;"></i> Copiar
+                  </button>
+                </div>
+                <pre id="fmt-linkedin-content" style="white-space: pre-wrap; font-family: var(--font-sans); font-size: 0.9rem; line-height: 1.6; color: var(--text-main); background: var(--bg-input); padding: 18px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);"></pre>
+              </div>
+            </div>
+
+            <!-- Panel Carrusel -->
+            <div class="format-panel" id="fmt-panel-carousel" style="display: none;">
+              <div class="carousel-preview" id="fmt-carousel-container"></div>
+            </div>
+
+            <!-- Panel Video -->
+            <div class="format-panel" id="fmt-panel-video" style="display: none;">
+              <div class="card">
+                <div class="card-header">
+                  <h4 class="card-title">Guion Estructurado para Video (TikTok / Reels / YouTube)</h4>
+                  <button class="btn btn-secondary btn-sm" onclick="window.ExportService.copyToClipboard(document.getElementById('fmt-video-content').textContent, 'Guion de video copiado')">
+                    <i data-lucide="copy" style="width: 14px;"></i> Copiar
+                  </button>
+                </div>
+                <pre id="fmt-video-content" style="white-space: pre-wrap; font-family: var(--font-mono); font-size: 0.85rem; line-height: 1.6; color: var(--accent-cyan); background: var(--bg-input); padding: 18px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);"></pre>
+              </div>
+            </div>
+
+            <!-- Panel Newsletter -->
+            <div class="format-panel" id="fmt-panel-newsletter" style="display: none;">
+              <div class="card">
+                <div class="card-header">
+                  <h4 class="card-title">Edición de Newsletter</h4>
+                  <button class="btn btn-secondary btn-sm" onclick="window.ExportService.copyToClipboard(document.getElementById('fmt-newsletter-content').textContent, 'Newsletter copiada')">
+                    <i data-lucide="copy" style="width: 14px;"></i> Copiar
+                  </button>
+                </div>
+                <pre id="fmt-newsletter-content" style="white-space: pre-wrap; font-family: var(--font-sans); font-size: 0.9rem; line-height: 1.6; color: var(--text-main); background: var(--bg-input); padding: 18px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);"></pre>
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ==================== PESTAÑA: CALENDARIO & CADENCIA ==================== -->
+        <section class="tab-view" id="tab-calendar">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title"><i data-lucide="calendar" style="color: var(--accent-emerald);"></i> Cadencia Semanal de Publicación</h3>
+                <p class="card-description">Ritmo editorial planificado para maximizar el engagement en LinkedIn y canales directos.</p>
+              </div>
+            </div>
+
+            <div class="grid-cards">
+              <div class="card" style="border-top: 3px solid var(--primary);">
+                <span class="badge badge-primary">Lunes 08:30 AM</span>
+                <h4 style="margin: 8px 0 4px;">Ensayo de Tendencias</h4>
+                <p style="font-size: 0.8rem; color: var(--text-muted);">Análisis de gobernanza o informe global con perspectiva ejecutiva.</p>
+              </div>
+              <div class="card" style="border-top: 3px solid var(--accent-cyan);">
+                <span class="badge badge-cyan">Miércoles 11:00 AM</span>
+                <h4 style="margin: 8px 0 4px;">Carrusel B2B</h4>
+                <p style="font-size: 0.8rem; color: var(--text-muted);">Guía visual de 5 diapositivas con framework aplicable de IA.</p>
+              </div>
+              <div class="card" style="border-top: 3px solid var(--accent-emerald);">
+                <span class="badge badge-emerald">Jueves 06:00 PM</span>
+                <h4 style="margin: 8px 0 4px;">Video Corto & Reflexión</h4>
+                <p style="font-size: 0.8rem; color: var(--text-muted);">Post personal sobre liderazgo y cultura de adopción tecnológica.</p>
+              </div>
+              <div class="card" style="border-top: 3px solid var(--accent-amber);">
+                <span class="badge badge-amber">Viernes 09:00 AM</span>
+                <h4 style="margin: 8px 0 4px;">Newsletter Exclusiva</h4>
+                <p style="font-size: 0.8rem; color: var(--text-muted);">Resumen ejecutivo semanal enviado a suscriptores y clientes.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ==================== PESTAÑA: PERFIL & PILARES ==================== -->
+        <section class="tab-view" id="tab-profile">
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title"><i data-lucide="user"></i> Identidad de Autoridad</h3>
+              </div>
+              <form id="form-profile">
+                <div class="form-group">
+                  <label class="form-label">Nombre del Líder / Cliente</label>
+                  <input type="text" id="profile-name-input" class="form-input" required>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Título Ejecutivo & Credenciales</label>
+                  <input type="text" id="profile-title-input" class="form-input" required>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Bio Estratégica & Tono de Voz</label>
+                  <textarea id="profile-bio-input" class="form-textarea"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Guardar Perfil</button>
+              </form>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title"><i data-lucide="globe"></i> Mercados Objetivo</h3>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 12px;">
+                <div style="display: flex; justify-content: space-between; padding: 12px; background: var(--bg-surface-raised); border-radius: var(--radius-md);">
+                  <div>
+                    <strong>México (Nacional)</strong>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">Corporativos y sector financiero</div>
+                  </div>
+                  <span class="badge badge-primary">50% Peso</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 12px; background: var(--bg-surface-raised); border-radius: var(--radius-md);">
+                  <div>
+                    <strong>Estados Unidos (Hispano/Tech)</strong>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">Empresas bilingües y fondos de capital</div>
+                  </div>
+                  <span class="badge badge-cyan">30% Peso</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 12px; background: var(--bg-surface-raised); border-radius: var(--radius-md);">
+                  <div>
+                    <strong>LATAM (Colombia, Chile, Perú)</strong>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">Transformación digital regional</div>
+                  </div>
+                  <span class="badge badge-emerald">20% Peso</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ==================== PESTAÑA: GATEWAY DE IA ==================== -->
+        <section class="tab-view" id="tab-aihub">
+          <div class="card" style="max-width: 800px; margin: 0 auto;">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title"><i data-lucide="cpu" style="color: var(--primary);"></i> Configuración del Motor de IA</h3>
+                <p class="card-description">Tus claves de API se guardan únicamente en la memoria local de tu navegador.</p>
+              </div>
+            </div>
+
+            <form id="form-ai-config">
+              <div class="form-group">
+                <label class="form-label">Proveedor de Inteligencia Artificial Activo</label>
+                <select id="ai-provider-select" class="form-select">
+                  <option value="autonomous">🚀 Motor Autónomo Heurístico (Sin Clave / Gratis)</option>
+                  <option value="groq">⚡ Groq Cloud (Llama 3.3 70B - Ultrarrápido)</option>
+                  <option value="openai">🧠 OpenAI (GPT-4o)</option>
+                  <option value="gemini">✨ Google Gemini (1.5 Flash / Pro)</option>
+                  <option value="ollama">💻 Ollama Local (http://localhost:11434)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Groq API Key (Opcional - Gratis en console.groq.com)</label>
+                <input type="password" id="ai-groq-key" class="form-input" placeholder="gsk_...">
+              </div>
+
+              <div class="grid-2">
+                <div class="form-group">
+                  <label class="form-label">OpenAI API Key (Opcional)</label>
+                  <input type="password" id="ai-openai-key" class="form-input" placeholder="sk-...">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Gemini API Key (Opcional)</label>
+                  <input type="password" id="ai-gemini-key" class="form-input" placeholder="AIza...">
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Ollama URL (Para modelos locales)</label>
+                <input type="text" id="ai-ollama-url" class="form-input" value="http://localhost:11434">
+              </div>
+
+              <button type="submit" class="btn btn-primary">
+                <i data-lucide="save"></i> Guardar Configuración de IA
+              </button>
+            </form>
+          </div>
+        </section>
+
+
+        <!-- ==================== PESTAÑA: MÉTRICAS & LEADS ==================== -->
+        <section class="tab-view" id="tab-metrics">
+          <div class="grid-cards">
+            <div class="card">
+              <span class="badge badge-primary" style="margin-bottom: 8px;">Volumen</span>
+              <div class="stat-value" id="metric-total-articles">142</div>
+              <div class="stat-label">Artículos Analizados</div>
+            </div>
+            <div class="card">
+              <span class="badge badge-cyan" style="margin-bottom: 8px;">Producción</span>
+              <div class="stat-value" id="metric-total-pieces">28</div>
+              <div class="stat-label">Ensayos & Formatos Listos</div>
+            </div>
+            <div class="card">
+              <span class="badge badge-emerald" style="margin-bottom: 8px;">Conversión</span>
+              <div class="stat-value" id="metric-total-leads">19</div>
+              <div class="stat-label">Leads de Directores Captados</div>
+            </div>
+            <div class="card">
+              <span class="badge badge-amber" style="margin-bottom: 8px;">Efectividad</span>
+              <div class="stat-value" id="metric-conversion-rate">13.4%</div>
+              <div class="stat-label">Tasa de Conversión B2B</div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Contenedor de Notificaciones Toast -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Scripts de la Aplicación -->
+  <script src="js/state.js"></script>
+  <script src="js/news.js"></script>
+  <script src="js/ai-engine.js"></script>
+  <script src="js/synthesis.js"></script>
+  <script src="js/multiformat.js"></script>
+  <script src="js/export.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

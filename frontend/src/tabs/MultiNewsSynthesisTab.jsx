@@ -7,12 +7,14 @@ import {
   AlertCircle,
   Wand2,
   FileText,
+  Download,
 } from 'lucide-react';
 import {
   runAutoPilotSynthesis,
   generateMultiNewsSynthesis,
   getMultiNewsHistory,
 } from '../api';
+import { downloadEssayAsPdf } from '../utils/downloadEssayPdf';
 
 const AUTHOR = 'Juan Vásquez';
 const PROVIDER_KEY = 'a360_multi_synth_provider_mode';
@@ -34,6 +36,8 @@ export default function MultiNewsSynthesisTab() {
       return 'auto';
     }
   });
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfMsg, setPdfMsg] = useState('');
 
   const changeProviderMode = (mode) => {
     setProviderMode(mode);
@@ -142,7 +146,31 @@ export default function MultiNewsSynthesisTab() {
     }
   };
 
-  const busy = loading || improving;
+  const busy = loading || improving || pdfBusy;
+
+  const downloadPdf = async () => {
+    setErrorMsg('');
+    setPdfMsg('');
+    setPdfBusy(true);
+    try {
+      const outcome = await downloadEssayAsPdf({
+        title: draftTitle || result?.title,
+        author: AUTHOR,
+        thesis: result?.central_focus || result?.suggested_focus || '',
+        bodyHtml: draftHtml || result?.content_html || '',
+        sourcesCount: result?.sources_count || result?.selected_article_ids?.length || 0,
+      });
+      if (!outcome.ok) {
+        setErrorMsg(outcome.error || 'No se pudo generar el PDF.');
+        return;
+      }
+      setPdfMsg(`PDF descargado: ${outcome.filename}`);
+    } catch (err) {
+      setErrorMsg(err.message || 'No se pudo generar el PDF.');
+    } finally {
+      setPdfBusy(false);
+    }
+  };
 
   return (
     <section className="multi-synth glass-panel">
@@ -232,7 +260,23 @@ export default function MultiNewsSynthesisTab() {
             <span className={`status-badge ${result.status === 'published' ? 'status-verified' : 'status-pending'}`}>
               {result.status === 'published' ? 'Publicado' : 'Pendiente de revisión'}
             </span>
+            <button
+              type="button"
+              className="btn btn-secondary multi-synth__pdf-btn"
+              disabled={busy || !(draftHtml || result.content_html)}
+              onClick={downloadPdf}
+              title="Descarga un archivo PDF al equipo"
+            >
+              <Download size={15} aria-hidden="true" />
+              {pdfBusy ? 'Generando PDF…' : 'Descargar PDF'}
+            </button>
           </div>
+          {pdfMsg ? (
+            <p className="multi-synth__pdf-ok" role="status">
+              <CheckCircle2 size={14} aria-hidden="true" />
+              {pdfMsg}
+            </p>
+          ) : null}
 
           <div className="multi-synth__focus">
             <span className="page-eyebrow">Tesis única</span>
@@ -282,6 +326,15 @@ export default function MultiNewsSynthesisTab() {
               >
                 <Wand2 size={15} aria-hidden="true" />
                 {improving ? 'Mejorando…' : 'Mejorar artículo'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={busy || !(draftHtml || result.content_html)}
+                onClick={downloadPdf}
+              >
+                <Download size={15} aria-hidden="true" />
+                {pdfBusy ? 'Generando PDF…' : 'Descargar PDF'}
               </button>
               <button
                 type="button"

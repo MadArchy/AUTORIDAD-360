@@ -3554,6 +3554,21 @@ select optgroup {
   align-items: center;
 }
 
+.multi-synth__pdf-btn {
+  margin-left: auto;
+  padding: 7px 12px;
+  font-size: 0.82rem;
+}
+
+.multi-synth__pdf-ok {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: #86efac;
+  font-size: 0.82rem;
+}
+
 .multi-synth__focus {
   padding: 14px 16px;
   border-radius: var(--radius-md);
